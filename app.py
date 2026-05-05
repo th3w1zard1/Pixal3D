@@ -51,7 +51,7 @@ MODES = [
 ]
 STEPS = 8
 DEFAULT_MODE = 3
-DEFAULT_STEP = 3
+DEFAULT_STEP = 0
 
 # Cascade parameters
 CASCADE_LR_RESOLUTION = 512
@@ -490,7 +490,7 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
                     preview_output = gr.HTML(empty_html, label="3D Asset Preview", show_label=True, container=True)
                     extract_btn = gr.Button("Extract GLB")
                 with gr.Step("Extract", id=1):
-                    glb_output = gr.Model3D(label="Extracted GLB", height=724, show_label=True, display_mode="solid", clear_color=(0.25, 0.25, 0.25, 1.0))
+                    glb_output = gr.Model3D(label="Extracted GLB", height=724, show_label=True, display_mode="solid", clear_color=(0.25, 0.25, 0.25, 1.0), camera_position=(90, 0, None))
                     download_btn = gr.DownloadButton(label="Download GLB")
 
         with gr.Column(scale=1, min_width=172):
