@@ -463,7 +463,8 @@ def extract_glb(state, decimation_target, texture_size, req: gr.Request, progres
 
 with gr.Blocks(delete_cache=(600, 600)) as demo:
     gr.Markdown("""
-    ## Image to 3D Asset with Pixal3D (TRELLIS.2 Backbone)
+    ## Pixal3D: Pixel-Aligned 3D Generation from Images
+    [[Project Page](https://ldyang694.github.io/projects/pixal3d/)]
     * Upload an image and click **Generate** to create a 3D asset using Pixal3D with TRELLIS.2 backbone.
     * Click **Extract GLB** to export and download the generated GLB file.
     * Camera parameters are estimated automatically via MoGe-2.
