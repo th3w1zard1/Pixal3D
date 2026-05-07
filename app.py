@@ -5,6 +5,7 @@ Image-to-3D generation using Proj-mode Cascade inference (512->1024/1536).
 
 """
 
+import spaces
 import gradio as gr
 
 import os
@@ -16,6 +17,10 @@ subprocess.run([
 
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+os.environ["ATTN_BACKEND"] = "flash_attn_3"
+os.environ["FLEX_GEMM_AUTOTUNE_CACHE_PATH"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'autotune_cache.json')
+os.environ["FLEX_GEMM_AUTOTUNER_VERBOSE"] = '1'
+
 import argparse
 import math
 import time
@@ -324,6 +329,7 @@ def get_seed(randomize_seed, seed):
 # Core Inference
 # ============================================================================
 
+@spaces.GPU(duration=120)
 def image_to_3d(
     image, seed, resolution,
     ss_guidance_strength, ss_guidance_rescale, ss_sampling_steps, ss_rescale_t,
@@ -422,6 +428,7 @@ def image_to_3d(
     return state, full_html
 
 
+@spaces.GPU(duration=120)
 def extract_glb(state, decimation_target, texture_size, req: gr.Request, progress=gr.Progress(track_tqdm=True)):
     user_dir = os.path.join(TMP_DIR, str(req.session_hash))
     shape_slat, tex_slat, res = unpack_state(state)
