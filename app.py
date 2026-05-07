@@ -433,6 +433,14 @@ def extract_glb(state, decimation_target, texture_size, req: gr.Request, progres
         decimation_target=decimation_target, texture_size=texture_size,
         remesh=True, remesh_band=1, remesh_project=0, use_tqdm=True,
     )
+    # Ry(180°) @ Rx(90°): (x,y,z) → (-x, -z, -y)
+    rot = np.array([
+        [-1,  0,  0,  0],
+        [ 0,  0, -1,  0],
+        [ 0, -1,  0,  0],
+        [ 0,  0,  0,  1],
+    ], dtype=np.float64)
+    glb.apply_transform(rot)
     now = datetime.now()
     timestamp = now.strftime("%Y-%m-%dT%H%M%S") + f".{now.microsecond // 1000:03d}"
     os.makedirs(user_dir, exist_ok=True)
@@ -490,7 +498,7 @@ with gr.Blocks(delete_cache=(600, 600)) as demo:
                     preview_output = gr.HTML(empty_html, label="3D Asset Preview", show_label=True, container=True)
                     extract_btn = gr.Button("Extract GLB")
                 with gr.Step("Extract", id=1):
-                    glb_output = gr.Model3D(label="Extracted GLB", height=724, show_label=True, display_mode="solid", clear_color=(0.25, 0.25, 0.25, 1.0), camera_position=(90, 0, None))
+                    glb_output = gr.Model3D(label="Extracted GLB", height=724, show_label=True, display_mode="solid", clear_color=(0.25, 0.25, 0.25, 1.0), camera_position=(-90, 90, None))
                     download_btn = gr.DownloadButton(label="Download GLB")
 
         with gr.Column(scale=1, min_width=172):
