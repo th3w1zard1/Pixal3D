@@ -198,8 +198,14 @@ def render_proj_aligned_video(sample, camera_angle_x, distance, resolution=1024,
         extrinsics_list.append(extr_rotated)
         intrinsics_list.append(intr_first)
     
+    render_options = {'resolution': resolution, 'bg_color': bg_color}
+    if 'near' in kwargs:
+        render_options['near'] = kwargs.pop('near')
+    if 'far' in kwargs:
+        render_options['far'] = kwargs.pop('far')
+    
     return render_frames(sample, extrinsics_list, intrinsics_list,
-                         {'resolution': resolution, 'bg_color': bg_color}, **kwargs)
+                         render_options, **kwargs)
 
 
 def make_pbr_vis_frames(result, resolution=1024):

@@ -204,7 +204,8 @@ def pack_state(shape_slat, tex_slat, res):
         'coords': shape_slat.coords.cpu().numpy(),
         'res': res,
     }
-    state_path = os.path.join(TMP_DIR, f"state_{int(time.time()*1000)}.npz")
+    import random
+    state_path = os.path.join(TMP_DIR, f"state_{int(time.time()*1000)}_{random.randint(0,9999):04d}.npz")
     np.savez_compressed(state_path, **state_data)
     return state_path
 
@@ -218,6 +219,77 @@ def unpack_state(state_path):
     return shape_slat, tex_slat, int(data['res'])
 
 # ============================================================================
+# Progress Tracking (SSE-based, tqdm interception, multi-session)
+# ============================================================================
+
+import asyncio
+import queue
+from fastapi.responses import StreamingResponse
+from fastapi import Request
+
+# Per-session progress queues
+_progress_queues: Dict[str, queue.Queue] = {}
+_active_session: str = ""  # Which session is currently running GPU work
+
+def _reset_progress(session_id: str):
+    global _active_session
+    _active_session = session_id
+    if session_id not in _progress_queues:
+        _progress_queues[session_id] = queue.Queue()
+    # Drain old items
+    q = _progress_queues[session_id]
+    while not q.empty():
+        try:
+            q.get_nowait()
+        except:
+            break
+
+def _update_progress(stage: str, step: int, total: int):
+    data = {"stage": stage, "step": step, "total": total, "done": False}
+    session_id = _active_session
+    if session_id and session_id in _progress_queues:
+        try:
+            _progress_queues[session_id].put_nowait(data)
+        except:
+            pass
+
+def _finish_progress():
+    session_id = _active_session
+    if session_id and session_id in _progress_queues:
+        try:
+            _progress_queues[session_id].put_nowait({"done": True})
+        except:
+            pass
+        # Schedule cleanup after a short delay (let SSE client receive the done signal)
+        def _cleanup():
+            time.sleep(5)
+            _progress_queues.pop(session_id, None)
+        threading.Thread(target=_cleanup, daemon=True).start()
+
+# Monkey-patch tqdm to intercept progress
+import tqdm as _tqdm_module
+
+_original_tqdm = _tqdm_module.tqdm
+
+class _TqdmProgressInterceptor(_original_tqdm):
+    """Wraps tqdm to push progress updates to SSE."""
+    def __init__(self, *args, **kwargs):
+        self._stage_desc = kwargs.get('desc', 'Processing')
+        super().__init__(*args, **kwargs)
+    
+    def update(self, n=1):
+        super().update(n)
+        _update_progress(self._stage_desc, self.n, self.total or 0)
+
+# Patch tqdm globally
+_tqdm_module.tqdm = _TqdmProgressInterceptor
+# Also patch the direct import in the sampler module and render_utils
+import trellis2.pipelines.samplers.flow_euler as _fe_module
+_fe_module.tqdm = _TqdmProgressInterceptor
+import trellis2.utils.render_utils as _ru_module
+_ru_module.tqdm = _TqdmProgressInterceptor
+
+# ============================================================================
 # API Implementation
 # ============================================================================
 
@@ -228,6 +300,36 @@ async def homepage():
     html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
     with open(html_path, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
+
+@app.get("/progress")
+async def progress_sse(request: Request):
+    """SSE endpoint for real-time progress updates during generation."""
+    session_id = request.query_params.get("session_id", "")
+    if session_id and session_id not in _progress_queues:
+        _progress_queues[session_id] = queue.Queue()
+    
+    async def event_stream():
+        q = _progress_queues.get(session_id)
+        timeout_count = 0
+        while True:
+            if q:
+                try:
+                    data = q.get_nowait()
+                    yield f"data: {json.dumps(data)}\n\n"
+                    if data.get("done"):
+                        break
+                    timeout_count = 0
+                except queue.Empty:
+                    yield f": keepalive\n\n"
+                    timeout_count += 1
+            else:
+                yield f": keepalive\n\n"
+                timeout_count += 1
+            # Timeout after 5 minutes of no data
+            if timeout_count > 1000:
+                break
+            await asyncio.sleep(0.3)
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 @app.api()
 def preprocess(image: FileData) -> FileData:
@@ -256,14 +358,18 @@ def generate_3d(
     tex_slat_guidance_rescale: float = 0.0,
     tex_slat_sampling_steps: int = 12,
     tex_slat_rescale_t: float = 3.0,
+    session_id: str = "",
 ) -> Dict:
     init_models()
+    _reset_progress(session_id)
+    _update_progress("Preprocessing & Camera Estimation", 0, 1)
+    
     torch.manual_seed(seed)
     hr_resolution = int(resolution)
     
     img = Image.open(image["path"])
     image_preprocessed = pipeline.preprocess_image(img)
-    temp_processed_path = os.path.join(TMP_DIR, "temp_proc.png")
+    temp_processed_path = os.path.join(TMP_DIR, f"temp_proc_{session_id[:8]}_{int(time.time()*1000)}.png")
     image_preprocessed.save(temp_processed_path)
     
     camera_params = get_camera_params_wild_moge(
@@ -271,6 +377,7 @@ def generate_3d(
         mesh_scale=WILD_MESH_SCALE, extend_pixel=WILD_EXTEND_PIXEL,
         image_resolution=WILD_IMAGE_RESOLUTION,
     )
+    _update_progress("Preprocessing & Camera Estimation", 1, 1)
     
     ss_sampler_override = {"steps": ss_sampling_steps, "guidance_strength": ss_guidance_strength,
                            "guidance_rescale": ss_guidance_rescale, "rescale_t": ss_rescale_t}
@@ -296,12 +403,18 @@ def generate_3d(
     mesh = mesh_list[0]
     state_path = pack_state(shape_slat, tex_slat, res)
     
+    _update_progress("Rendering views", 0, 1)
     mesh.simplify(16777216)
+    cam_dist = camera_params['distance']
+    near = max(0.01, cam_dist - 2.0)
+    far = cam_dist + 10.0
     renders = render_utils.render_proj_aligned_video(
         mesh, camera_angle_x=camera_params['camera_angle_x'],
-        distance=camera_params['distance'], resolution=1024,
+        distance=cam_dist, resolution=1024,
         num_frames=STEPS, envmap=envmap,
+        near=near, far=far,
     )
+    _update_progress("Rendering views", 1, 1)
     
     # Save renders and return paths
     render_files = {}
@@ -313,6 +426,7 @@ def generate_3d(
             mode_files.append(FileData(path=p))
         render_files[mode_key] = mode_files
 
+    _finish_progress()
     return {
         "render_paths": render_files,
         "state_path": os.path.abspath(state_path)
@@ -320,10 +434,16 @@ def generate_3d(
 
 @app.api()
 @spaces.GPU(duration=240)
-def extract_glb_api(state_path: str, decimation_target: int, texture_size: int) -> FileData:
+def extract_glb_api(state_path: str, decimation_target: int, texture_size: int, session_id: str = "") -> FileData:
     init_models()
+    _reset_progress(session_id)
+    _update_progress("Decoding latent", 0, 1)
+    
     shape_slat, tex_slat, res = unpack_state(state_path)
     mesh = pipeline.decode_latent(shape_slat, tex_slat, res)[0]
+    _update_progress("Decoding latent", 1, 1)
+    
+    _update_progress("Extracting GLB mesh", 0, 1)
     glb = o_voxel.postprocess.to_glb(
         vertices=mesh.vertices, faces=mesh.faces, attr_volume=mesh.attrs,
         coords=mesh.coords, attr_layout=pipeline.pbr_attr_layout,
@@ -341,6 +461,7 @@ def extract_glb_api(state_path: str, decimation_target: int, texture_size: int) 
     
     out_glb = os.path.join(TMP_DIR, f"result_{int(time.time()*1000)}.glb")
     glb.export(out_glb, extension_webp=True)
+    _finish_progress()
     return FileData(path=out_glb)
 
 # Mount assets and tmp for direct access

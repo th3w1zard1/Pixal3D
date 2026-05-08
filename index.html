@@ -548,9 +548,9 @@
 
             <div class="sidebar-section" style="margin-bottom: 1.5rem;">
                 <p style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.6;">
-                    Upload an image and click Generate.<br>
-                    Click Extract GLB to export.<br>
-                    Download the generated GLB file.
+                    1. Upload an image and click Generate.<br>
+                    2. Click Extract GLB to export.<br>
+                    3. Download the generated GLB file.
                 </p>
                 <p style="font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; margin-top: 0.5rem; opacity: 0.7;">
                     Note: Camera estimated automatically via MoGe-2.
@@ -651,9 +651,9 @@
                         <span>3. RESULT</span>
                     </div>
                 </div>
-                <div style="color: var(--text-dim); font-size: 0.8rem; font-weight: 500;">
-                    Pixal3D V1.1
-                </div>
+                <button class="btn btn-outline" id="clear-btn" title="Clear all & restart" style="width: 34px; height: 34px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; border-color: rgba(248,113,113,0.3);">
+                    <i data-lucide="trash-2" style="width: 16px; height: 16px; color: #f87171;"></i>
+                </button>
             </header>
 
             <div class="workspace">
@@ -716,9 +716,21 @@
 
     <div class="loading-overlay" id="loading-overlay">
         <div class="loader-ring"></div>
-        <div style="text-align: center;">
-            <h2 id="loading-title" style="font-family: 'Outfit'; margin-bottom: 0.5rem;">Synthesizing Geometry</h2>
-            <p id="loading-subtitle" style="color: var(--text-dim);">The neural engine is crafting your 3D model...</p>
+        <div style="text-align: center; width: 100%; max-width: 500px; padding: 0 2rem;">
+            <!-- Progress stages -->
+            <div id="progress-stages" style="display: none; text-align: left;">
+                <div class="progress-stage" id="progress-stage-item" style="margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <span id="progress-stage-name" style="font-size: 0.85rem; font-weight: 600; color: var(--primary);">Initializing...</span>
+                        <span id="progress-step-text" style="font-size: 0.75rem; color: var(--text-dim); font-family: monospace;">0/0</span>
+                    </div>
+                    <div style="width: 100%; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;">
+                        <div id="progress-bar-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); border-radius: 3px; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+                <!-- Stage history log -->
+                <div id="progress-log" style="font-size: 0.75rem; color: var(--text-dim); line-height: 1.8; max-height: 180px; overflow-y: auto; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid var(--border);"></div>
+            </div>
         </div>
     </div>
 
@@ -736,6 +748,7 @@
         let generationResult = null;
         let currentMode = "shaded_forest";
         let currentFrame = 0;
+        const sessionId = crypto.randomUUID();
         let currentStep = 1;
 
         const MODES = [
@@ -782,6 +795,52 @@
                 link.click();
             };
 
+            // Clear button
+            document.getElementById('clear-btn').onclick = () => {
+                // Reset state
+                currentFile = null;
+                generationResult = null;
+                currentFrame = 0;
+                currentMode = "shaded_forest";
+
+                // Reset source preview
+                document.getElementById('source-preview').src = '';
+                document.getElementById('source-preview').style.display = 'none';
+                document.getElementById('upload-hint').style.display = 'flex';
+                document.getElementById('file-input').value = '';
+
+                // Reset generate button
+                document.getElementById('generate-btn').disabled = true;
+
+                // Reset preview frames
+                document.getElementById('frame-container').innerHTML = '';
+                document.getElementById('angle-slider').value = 0;
+                document.getElementById('angle-display').textContent = '00';
+
+                // Reset 3D viewer
+                document.getElementById('main-3d-viewer').removeAttribute('src');
+
+                // Reset thumbnails
+                document.getElementById('ref-thumb-2').style.display = 'none';
+                document.getElementById('ref-thumb-2').src = '';
+                document.getElementById('ref-thumb-3').style.display = 'none';
+                document.getElementById('ref-thumb-3').src = '';
+
+                // Reset mode tabs
+                document.querySelectorAll('.mode-tab').forEach(t => {
+                    t.classList.toggle('active', t.textContent === 'Forest');
+                });
+
+                // Go back to step 1
+                setStep(1);
+                showToast("Cleared. Ready for new upload.");
+            };
+
+            // Step navigation click
+            document.getElementById('step-1').onclick = () => setStep(1);
+            document.getElementById('step-2').onclick = () => { if (generationResult) setStep(2); };
+            document.getElementById('step-3').onclick = () => { if (document.getElementById('main-3d-viewer').src) setStep(3); };
+
             // Slider
             document.getElementById('angle-slider').oninput = (e) => {
                 currentFrame = parseInt(e.target.value);
@@ -815,19 +874,24 @@
                 img.style.display = 'block';
                 hint.style.display = 'none';
                 document.getElementById('generate-btn').disabled = false;
-                // Update reference thumbnails
-                const thumb2 = document.getElementById('ref-thumb-2');
-                const thumb3 = document.getElementById('ref-thumb-3');
-                thumb2.src = e.target.result;
-                thumb2.style.display = 'block';
-                thumb3.src = e.target.result;
-                thumb3.style.display = 'block';
                 setStep(1);
             };
             reader.readAsDataURL(file);
             
-            // Background pre-warm
-            client.predict("/preprocess", { image: handle_file(file) }).catch(console.error);
+            // Call preprocess and update with segmented result
+            try {
+                const result = await client.predict("/preprocess", { image: handle_file(file) });
+                const processedUrl = result.data[0].url;
+                if (processedUrl) {
+                    document.getElementById('source-preview').src = processedUrl;
+                    document.getElementById('ref-thumb-2').src = processedUrl;
+                    document.getElementById('ref-thumb-2').style.display = 'block';
+                    document.getElementById('ref-thumb-3').src = processedUrl;
+                    document.getElementById('ref-thumb-3').style.display = 'block';
+                }
+            } catch (err) {
+                console.error("Preprocess failed:", err);
+            }
         }
 
         function setStep(num) {
@@ -850,7 +914,8 @@
         async function startGeneration() {
             if (!currentFile) return;
 
-            showLoading("Neural Synthesis", "Optimizing geometry for " + (document.getElementById('resolution').value) + "px output...");
+            showLoading();
+            startProgressListener();
             try {
                 const params = {
                     image: handle_file(currentFile),
@@ -858,20 +923,86 @@
                     resolution: parseInt(document.getElementById('resolution').value),
                     ss_guidance_strength: parseFloat(document.getElementById('ss_gs').value),
                     ss_sampling_steps: parseInt(document.getElementById('ss_steps').value),
-                    shape_slat_guidance_strength: parseFloat(document.getElementById('shape_gs').value)
+                    shape_slat_guidance_strength: parseFloat(document.getElementById('shape_gs').value),
+                    session_id: sessionId
                 };
 
                 const result = await client.predict("/generate_3d", params);
                 generationResult = result.data[0];
                 
+                stopProgressListener();
                 populateFrames(generationResult.render_paths);
                 setStep(2);
                 hideLoading();
                 showToast("Generation complete!");
             } catch (err) {
                 console.error(err);
+                stopProgressListener();
                 hideLoading();
                 showToast("An error occurred during synthesis.");
+            }
+        }
+
+        // SSE Progress Listener
+        let progressEventSource = null;
+        let lastStageName = "";
+        
+        function startProgressListener() {
+            // Show progress UI
+            document.getElementById('progress-stages').style.display = 'block';
+            document.getElementById('progress-log').innerHTML = '';
+            document.getElementById('progress-stage-name').textContent = 'Initializing...';
+            document.getElementById('progress-step-text').textContent = '';
+            document.getElementById('progress-bar-fill').style.width = '0%';
+            lastStageName = "";
+
+            progressEventSource = new EventSource(`/progress?session_id=${sessionId}`);
+            progressEventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.done) {
+                        stopProgressListener();
+                        return;
+                    }
+                    updateProgressUI(data);
+                } catch (e) {}
+            };
+            progressEventSource.onerror = () => {
+                // Silently ignore SSE errors, generation continues
+            };
+        }
+
+        function stopProgressListener() {
+            if (progressEventSource) {
+                progressEventSource.close();
+                progressEventSource = null;
+            }
+        }
+
+        function updateProgressUI(data) {
+            const stageName = data.stage || '';
+            const step = data.step || 0;
+            const total = data.total || 0;
+
+            // If stage changed, log the previous one as completed
+            if (stageName && stageName !== lastStageName) {
+                if (lastStageName) {
+                    const logEl = document.getElementById('progress-log');
+                    logEl.innerHTML += `<div style="display:flex;align-items:center;gap:0.4rem;"><span style="color:var(--accent);">✓</span> ${lastStageName}</div>`;
+                    logEl.scrollTop = logEl.scrollHeight;
+                }
+                lastStageName = stageName;
+            }
+
+            // Update current stage display
+            document.getElementById('progress-stage-name').textContent = stageName;
+            if (total > 0) {
+                document.getElementById('progress-step-text').textContent = `${step}/${total}`;
+                const pct = Math.min(100, (step / total) * 100);
+                document.getElementById('progress-bar-fill').style.width = pct + '%';
+            } else {
+                document.getElementById('progress-step-text').textContent = '';
+                document.getElementById('progress-bar-fill').style.width = '0%';
             }
         }
 
@@ -912,17 +1043,20 @@
         async function startExtraction() {
             if (!generationResult) return;
 
-            showLoading("Finalizing Mesh", "Performing PBR texture baking and decimation...");
+            showLoading();
+            startProgressListener();
             try {
                 const params = {
                     state_path: generationResult.state_path,
                     decimation_target: parseInt(document.getElementById('decimation').value),
-                    texture_size: 4096 // Constant for highest quality
+                    texture_size: 4096,
+                    session_id: sessionId
                 };
 
                 const result = await client.predict("/extract_glb_api", params);
                 const glbUrl = result.data[0].url;
 
+                stopProgressListener();
                 const viewer = document.getElementById('main-3d-viewer');
                 viewer.src = glbUrl;
                 setStep(3);
@@ -930,6 +1064,7 @@
                 showToast("3D Asset ready!");
             } catch (err) {
                 console.error(err);
+                stopProgressListener();
                 hideLoading();
                 showToast("Extraction failed.");
             }
@@ -951,7 +1086,7 @@
                 div.className = 'example-item';
                 div.innerHTML = `<img src="${path}">`;
                 div.onclick = async () => {
-                    showLoading("Fetching Sample", "Loading high-resolution asset from gallery...");
+                    showLoading();
                     const res = await fetch(path);
                     const blob = await res.blob();
                     const file = new File([blob], "sample.webp", { type: "image/webp" });
@@ -998,14 +1133,15 @@
             document.getElementById('seed-display').textContent = s;
         };
 
-        function showLoading(title, sub) {
-            document.getElementById('loading-title').textContent = title;
-            document.getElementById('loading-subtitle').textContent = sub;
+        function showLoading() {
             document.getElementById('loading-overlay').style.display = 'flex';
         }
 
         function hideLoading() {
             document.getElementById('loading-overlay').style.display = 'none';
+            document.getElementById('progress-stages').style.display = 'none';
+            document.getElementById('progress-log').innerHTML = '';
+            document.getElementById('progress-bar-fill').style.width = '0%';
         }
 
         function showToast(msg) {
