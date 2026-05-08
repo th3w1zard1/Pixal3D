@@ -10,9 +10,12 @@ import numpy as np
 import base64
 import io
 import json
+import tempfile
 from datetime import datetime
 from typing import *
 from PIL import Image
+
+from gradio_client import Client as GradioClient, handle_file as gradio_handle_file
 
 import threading
 try:
@@ -138,6 +141,8 @@ def init_models():
         pipeline.image_cond_model_tex_1024 = build_image_cond_model(IMAGE_COND_CONFIGS["tex_1024"])
         
         pipeline.cuda()
+        pipeline.rembg_model = None  # Use remote BRIA-RMBG-2.0 instead
+        pipeline.low_vram = False
         
         print("[NAF] Pre-loading NAF upsampler model...")
         for attr in ['image_cond_model_ss', 'image_cond_model_shape_512', 'image_cond_model_shape_1024', 'image_cond_model_tex_1024']:
@@ -155,6 +160,52 @@ def init_models():
             'sunset': EnvMap(torch.tensor(cv2.cvtColor(cv2.imread(os.path.join(_base, 'assets/hdri/sunset.exr'), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB), dtype=torch.float32, device='cuda')),
             'courtyard': EnvMap(torch.tensor(cv2.cvtColor(cv2.imread(os.path.join(_base, 'assets/hdri/courtyard.exr'), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB), dtype=torch.float32, device='cuda')),
         }
+
+# ============================================================================
+# Remote Background Removal (same as Microsoft TRELLIS.2 official)
+# ============================================================================
+
+rmbg_client = GradioClient("briaai/BRIA-RMBG-2.0")
+
+def remove_background_remote(input: Image.Image) -> Image.Image:
+    """Remove background using remote BRIA-RMBG-2.0 Space (no local GPU needed)."""
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
+        input = input.convert('RGB')
+        input.save(f.name)
+        output = rmbg_client.predict(gradio_handle_file(f.name), api_name="/image")[0][0]
+        result = Image.open(output)
+        os.unlink(f.name)
+        return result
+
+def preprocess_image_remote(input: Image.Image, bg_color: tuple = (0, 0, 0)) -> Image.Image:
+    """Preprocess image using remote rembg (no GPU required)."""
+    # If has alpha channel, use it directly
+    has_alpha = False
+    if input.mode == 'RGBA':
+        alpha = np.array(input)[:, :, 3]
+        if not np.all(alpha == 255):
+            has_alpha = True
+    max_size = max(input.size)
+    scale = min(1, 1024 / max_size)
+    if scale < 1:
+        input = input.resize((int(input.width * scale), int(input.height * scale)), Image.Resampling.LANCZOS)
+    if has_alpha:
+        output = input
+    else:
+        output = remove_background_remote(input)
+    output_np = np.array(output)
+    alpha = output_np[:, :, 3]
+    bbox = np.argwhere(alpha > 0.8 * 255)
+    bbox = np.min(bbox[:, 1]), np.min(bbox[:, 0]), np.max(bbox[:, 1]), np.max(bbox[:, 0])
+    center = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
+    size = max(bbox[2] - bbox[0], bbox[3] - bbox[1])
+    size = int(size * 1)
+    bbox = center[0] - size // 2, center[1] - size // 2, center[0] + size // 2, center[1] + size // 2
+    output = output.crop(bbox)
+    output = np.array(output).astype(np.float32) / 255
+    output = output[:, :, :3] * output[:, :, 3:4] + np.array(bg_color) / 255 * (1 - output[:, :, 3:4])
+    output = Image.fromarray((output * 255).astype(np.uint8))
+    return output
 
 # ============================================================================
 # Utilities
@@ -332,11 +383,9 @@ async def progress_sse(request: Request):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 @app.api()
-@spaces.GPU(duration=60)
 def preprocess(image: FileData) -> FileData:
-    init_models()
     img = Image.open(image["path"])
-    processed = pipeline.preprocess_image(img)
+    processed = preprocess_image_remote(img)
     out_path = os.path.join(TMP_DIR, f"preprocessed_{int(time.time()*1000)}.png")
     processed.save(out_path)
     return FileData(path=out_path)
@@ -369,7 +418,8 @@ def generate_3d(
     hr_resolution = int(resolution)
     
     img = Image.open(image["path"])
-    image_preprocessed = pipeline.preprocess_image(img)
+    # Image is already preprocessed by /preprocess endpoint, use directly
+    image_preprocessed = img
     temp_processed_path = os.path.join(TMP_DIR, f"temp_proc_{session_id[:8]}_{int(time.time()*1000)}.png")
     image_preprocessed.save(temp_processed_path)
     
