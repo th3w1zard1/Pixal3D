@@ -332,6 +332,7 @@ async def progress_sse(request: Request):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 @app.api()
+@spaces.GPU(duration=60)
 def preprocess(image: FileData) -> FileData:
     init_models()
     img = Image.open(image["path"])
