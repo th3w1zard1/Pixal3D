@@ -146,6 +146,7 @@
             align-items: center;
             justify-content: center;
             animation: fadeIn 0.4s ease-out;
+            position: relative;
         }
 
         .panel.active {
@@ -492,6 +493,47 @@
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
+        /* Reference thumbnail in preview/result panels */
+        .ref-thumbnail {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            width: 400px;
+            height: 400px;
+            object-fit: cover;
+            border-radius: var(--radius-sm);
+            border: 2px solid var(--border);
+            z-index: 20;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .ref-thumbnail:hover {
+            transform: scale(1.1);
+        }
+
+        /* Lightbox */
+        .lightbox-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 3000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: zoom-out;
+            backdrop-filter: blur(6px);
+        }
+
+        .lightbox-overlay img {
+            max-width: 80%;
+            max-height: 80%;
+            border-radius: var(--radius-md);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+
     </style>
 </head>
 <body>
@@ -502,6 +544,21 @@
             <div class="logo" style="margin-bottom: 2.5rem;">
                 <i data-lucide="sparkles"></i>
                 <span>Pixal3D</span>
+            </div>
+
+            <div class="sidebar-section" style="margin-bottom: 1.5rem;">
+                <p style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.6;">
+                    Upload an image and click Generate.<br>
+                    Click Extract GLB to export.<br>
+                    Download the generated GLB file.
+                </p>
+                <p style="font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; margin-top: 0.5rem; opacity: 0.7;">
+                    Note: Camera estimated automatically via MoGe-2.
+                </p>
+                <a href="https://ldyang694.github.io/projects/pixal3d/" target="_blank" class="btn btn-outline" style="margin-top: 1rem; padding: 0.6rem 1rem; font-size: 0.85rem;">
+                    <i data-lucide="globe" style="width: 16px;"></i>
+                    Project Page
+                </a>
             </div>
 
             <div class="sidebar-section">
@@ -595,7 +652,7 @@
                     </div>
                 </div>
                 <div style="color: var(--text-dim); font-size: 0.8rem; font-weight: 500;">
-                    TRELLIS.2 Engine • V2.6
+                    Pixal3D V1.1
                 </div>
             </header>
 
@@ -615,6 +672,7 @@
 
                 <!-- Panel 2: Multi-frame Preview -->
                 <div class="panel" id="panel-2">
+                    <img id="ref-thumb-2" class="ref-thumbnail" src="" alt="Reference">
                     <div class="viewer-wrapper">
                         <div id="frame-container">
                             <!-- Injected via JS -->
@@ -631,10 +689,12 @@
 
                 <!-- Panel 3: 3D Result -->
                 <div class="panel" id="panel-3">
+                    <img id="ref-thumb-3" class="ref-thumbnail" src="" alt="Reference">
                     <div class="viewer-wrapper">
                         <model-viewer id="main-3d-viewer" 
                             camera-controls 
                             auto-rotate 
+                            camera-orbit="-180deg 90deg auto"
                             shadow-intensity="1.5" 
                             environment-image="neutral" 
                             exposure="1.2">
@@ -660,6 +720,10 @@
             <h2 id="loading-title" style="font-family: 'Outfit'; margin-bottom: 0.5rem;">Synthesizing Geometry</h2>
             <p id="loading-subtitle" style="color: var(--text-dim);">The neural engine is crafting your 3D model...</p>
         </div>
+    </div>
+
+    <div class="lightbox-overlay" id="lightbox-overlay" onclick="closeLightbox()">
+        <img id="lightbox-img" src="" alt="Enlarged">
     </div>
 
     <div class="status-toast" id="toast">Generation started!</div>
@@ -751,6 +815,13 @@
                 img.style.display = 'block';
                 hint.style.display = 'none';
                 document.getElementById('generate-btn').disabled = false;
+                // Update reference thumbnails
+                const thumb2 = document.getElementById('ref-thumb-2');
+                const thumb3 = document.getElementById('ref-thumb-3');
+                thumb2.src = e.target.result;
+                thumb2.style.display = 'block';
+                thumb3.src = e.target.result;
+                thumb3.style.display = 'block';
                 setStep(1);
             };
             reader.readAsDataURL(file);
@@ -892,6 +963,20 @@
         }
 
         // Helpers
+        window.openLightbox = (src) => {
+            const lb = document.getElementById('lightbox-overlay');
+            document.getElementById('lightbox-img').src = src;
+            lb.style.display = 'flex';
+        };
+
+        window.closeLightbox = () => {
+            document.getElementById('lightbox-overlay').style.display = 'none';
+        };
+
+        // Thumbnail click to enlarge
+        document.getElementById('ref-thumb-2').onclick = (e) => { e.stopPropagation(); openLightbox(e.target.src); };
+        document.getElementById('ref-thumb-3').onclick = (e) => { e.stopPropagation(); openLightbox(e.target.src); };
+
         window.toggleAdvanced = () => {
             const el = document.getElementById('advanced-settings');
             const chev = document.getElementById('adv-chevron');
