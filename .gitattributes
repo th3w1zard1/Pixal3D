@@ -106,3 +106,8 @@ assets/hdri/night.exr filter=lfs diff=lfs merge=lfs -text
 assets/hdri/sunrise.exr filter=lfs diff=lfs merge=lfs -text
 assets/hdri/sunset.exr filter=lfs diff=lfs merge=lfs -text
 assets/teaser.webp filter=lfs diff=lfs merge=lfs -text
+assets/images/0_img.png filter=lfs diff=lfs merge=lfs -text
+assets/images/7_img.png filter=lfs diff=lfs merge=lfs -text
+assets/images/*.png filter=lfs diff=lfs merge=lfs -text
+assets/images/*.jpg filter=lfs diff=lfs merge=lfs -text
+assets/images/*.webp filter=lfs diff=lfs merge=lfs -text

@@ -68,6 +68,7 @@
 
         .main-content {
             flex: 1;
+            min-width: 0;
             display: flex;
             flex-direction: column;
             position: relative;
@@ -415,17 +416,32 @@
             padding: 1.5rem 2rem;
             border-top: 1px solid var(--border);
             background: var(--surface);
+            overflow: hidden;
         }
 
         .examples-grid {
             display: flex;
+            flex-wrap: nowrap;
             gap: 1rem;
-            overflow-x: auto;
+            overflow: hidden;
             padding-bottom: 0.5rem;
+        }
+        .examples-track {
+            display: flex;
+            gap: 1rem;
+            animation: marquee-scroll 180s linear infinite;
+        }
+        .examples-track:hover {
+            animation-play-state: paused;
+        }
+        @keyframes marquee-scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
         }
 
         .example-item {
-            flex: 0 0 100px;
+            flex: 0 0 140px;
+            min-width: 140px;
             aspect-ratio: 1/1;
             border-radius: var(--radius-md);
             overflow: hidden;
@@ -1073,28 +1089,56 @@
         function loadSamples() {
             const grid = document.getElementById('examples-grid');
             const samples = [
-                'assets/example_image/0a34fae7ba57cb8870df5325b9c30ea474def1b0913c19c596655b85a79fdee4.webp',
-                'assets/example_image/0e4984a9b3765ce80e9853443f9319ecedf90885c74b56cccfebc09402740f8a.webp',
-                'assets/example_image/130c2b18f1651a70f8aa15b2c99f8dba29bb943044d92871f9223bd3e989e8b1.webp',
-                'assets/example_image/22a868bac8e62511fccd2bc82ed31ae77ed31ae2a8a149be7150957f11b30c9b.webp',
-                'assets/example_image/3903b87907a6b4947006e6fc7c0c64f40cd98932a02bf0ecf7d6dfae776f3a38.webp',
-                'assets/example_image/4bc7abe209c8673dd3766ee4fad14d40acbed02d118e7629f645c60fd77313f1.webp'
+                'assets/images/0_img.png',
+                'assets/images/1_img.png',
+                'assets/images/3_img.webp',
+                'assets/images/4_img.png',
+                'assets/images/5_img.webp',
+                'assets/images/6_img.png',
+                'assets/images/7_img.png',
+                'assets/images/8_img.png',
+                'assets/images/9_img.png',
+                'assets/images/10_img.webp',
+                'assets/images/11_img.png',
+                'assets/images/12_img.png',
+                'assets/images/17_img.png',
+                'assets/images/21_img.png',
+                'assets/images/s_13_img.jpg',
+                'assets/images/s_14_img.jpg',
+                'assets/images/s_15_img.png',
+                'assets/images/s_16_img.png',
+                'assets/images/s_18_img.png',
+                'assets/images/s_19_img.png',
+                'assets/images/s_20_img.webp'
             ];
-            
-            samples.forEach(path => {
+
+            // Create track element for seamless loop
+            const track = document.createElement('div');
+            track.className = 'examples-track';
+
+            function createItem(path) {
                 const div = document.createElement('div');
                 div.className = 'example-item';
-                div.innerHTML = `<img src="${path}">`;
+                div.innerHTML = `<img src="${path}" draggable="false">`;
                 div.onclick = async () => {
                     showLoading();
                     const res = await fetch(path);
                     const blob = await res.blob();
-                    const file = new File([blob], "sample.webp", { type: "image/webp" });
+                    const ext = path.split('.').pop().toLowerCase();
+                    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+                    const mime = mimeMap[ext] || 'image/png';
+                    const file = new File([blob], path.split('/').pop(), { type: mime });
                     await handleImageUpload(file);
                     hideLoading();
                 };
-                grid.appendChild(div);
-            });
+                return div;
+            }
+
+            // Add items twice for seamless loop
+            samples.forEach(path => track.appendChild(createItem(path)));
+            samples.forEach(path => track.appendChild(createItem(path)));
+
+            grid.appendChild(track);
         }
 
         // Helpers
