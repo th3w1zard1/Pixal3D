@@ -236,11 +236,10 @@ from fastapi import Request
 
 # Per-session progress queues
 _progress_queues: Dict[str, queue.Queue] = {}
-_active_session: str = ""  # Which session is currently running GPU work
+_thread_local = threading.local()
 
 def _reset_progress(session_id: str):
-    global _active_session
-    _active_session = session_id
+    _thread_local.active_session = session_id
     if session_id not in _progress_queues:
         _progress_queues[session_id] = queue.Queue()
     # Drain old items
@@ -253,7 +252,7 @@ def _reset_progress(session_id: str):
 
 def _update_progress(stage: str, step: int, total: int):
     data = {"stage": stage, "step": step, "total": total, "done": False}
-    session_id = _active_session
+    session_id = getattr(_thread_local, 'active_session', '')
     if session_id and session_id in _progress_queues:
         try:
             _progress_queues[session_id].put_nowait(data)
@@ -261,7 +260,7 @@ def _update_progress(stage: str, step: int, total: int):
             pass
 
 def _finish_progress():
-    session_id = _active_session
+    session_id = getattr(_thread_local, 'active_session', '')
     if session_id and session_id in _progress_queues:
         try:
             _progress_queues[session_id].put_nowait({"done": True})

@@ -768,6 +768,8 @@
 
         let client;
         let currentFile = null;
+        let preprocessedFile = null;
+        let isPreprocessing = false;
         let generationResult = null;
         let currentMode = "shaded_forest";
         let currentFrame = 0;
@@ -889,6 +891,9 @@
 
         async function handleImageUpload(file) {
             currentFile = file;
+            preprocessedFile = null;
+            isPreprocessing = true;
+            document.getElementById('generate-btn').disabled = true;
             const reader = new FileReader();
             reader.onload = (e) => {
                 const img = document.getElementById('source-preview');
@@ -896,7 +901,6 @@
                 img.src = e.target.result;
                 img.style.display = 'block';
                 hint.style.display = 'none';
-                document.getElementById('generate-btn').disabled = false;
                 setStep(1);
             };
             reader.readAsDataURL(file);
@@ -906,6 +910,7 @@
                 const result = await client.predict("/preprocess", { image: handle_file(file) });
                 const processedUrl = result.data[0].url;
                 if (processedUrl) {
+                    preprocessedFile = processedUrl;
                     document.getElementById('source-preview').src = processedUrl;
                     document.getElementById('ref-thumb-2').src = processedUrl;
                     document.getElementById('ref-thumb-2').style.display = 'block';
@@ -915,6 +920,8 @@
             } catch (err) {
                 console.error("Preprocess failed:", err);
             }
+            isPreprocessing = false;
+            document.getElementById('generate-btn').disabled = false;
         }
 
         function setStep(num) {
@@ -941,7 +948,7 @@
             startProgressListener();
             try {
                 const params = {
-                    image: handle_file(currentFile),
+                    image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
                     seed: parseInt(document.getElementById('seed').value),
                     resolution: parseInt(document.getElementById('resolution').value),
                     ss_guidance_strength: parseFloat(document.getElementById('ss_gs').value),
