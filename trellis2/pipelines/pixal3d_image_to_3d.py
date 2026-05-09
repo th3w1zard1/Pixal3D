@@ -120,7 +120,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         pipeline.image_cond_model_shape_1024 = None
         pipeline.image_cond_model_tex_1024 = None
 
-        pipeline.rembg_model = None  # Skip local RMBG loading; use remote client instead
+        pipeline.rembg_model = getattr(rembg, args['rembg_model']['name'])(**args['rembg_model']['args'])
         
         pipeline.low_vram = args.get('low_vram', True)
         pipeline.default_pipeline_type = args.get('default_pipeline_type', '1024_cascade')
