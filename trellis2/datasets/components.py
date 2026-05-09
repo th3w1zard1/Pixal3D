@@ -57,16 +57,16 @@ class StandardDatasetBase(Dataset):
                 self._stats[key] = {}
                 metadata = pd.DataFrame(columns=['sha256']).set_index('sha256')
                 
-                # 只从 ss_latent 和 render_cond 合并关键字段
-                # 不包含 base，因为 base/metadata.csv 中的 cond_rendered=False 会错误覆盖真实值
+                # Only merge key fields from ss_latent and render_cond
+                # Exclude base, because cond_rendered=False in base/metadata.csv would incorrectly overwrite real values
                 for sub_key, r in root.items():
                     if sub_key == 'base':
-                        continue  # 跳过 base 目录
+                        continue  # Skip base directory
                     metadata_file = os.path.join(r, 'metadata.csv')
                     if os.path.exists(metadata_file):
                         metadata = metadata.combine_first(pd.read_csv(metadata_file).set_index('sha256'))
                 
-                # 从 base 单独读取 aesthetic_score（不读取其他可能冲突的列）
+                # Read aesthetic_score separately from base (avoid reading other potentially conflicting columns)
                 if 'base' in root:
                     base_metadata_file = os.path.join(root['base'], 'metadata.csv')
                     if os.path.exists(base_metadata_file):

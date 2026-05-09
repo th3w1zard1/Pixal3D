@@ -491,7 +491,7 @@ class BasicTrainer:
         Finetune from a checkpoint.
         Should be called by all processes.
         """
-        # 允许缺失的 keys（如 register_buffer 的参数）
+        # Allow missing keys (e.g., register_buffer parameters)
         ALLOWED_MISSING_KEYS = {'rope_phases'}
         
         if self.is_master:
@@ -508,7 +508,7 @@ class BasicTrainer:
                 # Remap checkpoint keys to handle structural changes (e.g., ProjectAttention wrapper)
                 model_ckpt = self._remap_checkpoint_keys(model_ckpt, model_state_dict)
                 
-                # 检查多余的 keys（在 ckpt 中但不在 model 中）
+                # Check extra keys (in ckpt but not in model)
                 for k, v in model_ckpt.items():
                     if k not in model_state_dict:
                         if self.is_master:
@@ -520,7 +520,7 @@ class BasicTrainer:
                         model_ckpt[k] = model_state_dict[k]
                 model_ckpt = {k: v for k, v in model_ckpt.items() if v is not None}
                 
-                # 检查缺失的 keys（在 model 中但不在 ckpt 中）
+                # Check missing keys (in model but not in ckpt)
                 missing_keys = set(model_state_dict.keys()) - set(model_ckpt.keys())
                 unexpected_missing = missing_keys - ALLOWED_MISSING_KEYS
                 if unexpected_missing and self.is_master:
@@ -529,7 +529,7 @@ class BasicTrainer:
                 if missing_keys & ALLOWED_MISSING_KEYS and self.is_master:
                     print(f'Info: Using model initialized values for: {missing_keys & ALLOWED_MISSING_KEYS}')
                 
-                # 补充缺失的 keys（使用模型初始化值）
+                # Fill in missing keys (using model initialized values)
                 for k in missing_keys:
                     model_ckpt[k] = model_state_dict[k]
                 
@@ -903,16 +903,16 @@ class BasicTrainer:
 
     def _verify_gradient_sync(self):
         """
-        验证 DDP 梯度同步是否真正生效。
-        DDP 的 backward 会自动对梯度进行 all_reduce，同步后所有卡的梯度应该完全相同。
+        Verify that DDP gradient synchronization is working correctly.
+        DDP's backward automatically performs all_reduce on gradients; after sync all ranks should have identical gradients.
         
-        验证方法：
-        1. 计算所有参数的总梯度 norm
-        2. 收集各卡的梯度 norm
-        3. 如果 DDP 同步正常，所有卡的梯度 norm 应该完全相同
-        4. 如果没有同步，各卡梯度 norm 会不同（因为各卡处理的数据不同）
+        Verification method:
+        1. Compute total gradient norm across all parameters
+        2. Gather gradient norms from all ranks
+        3. If DDP sync is working, all ranks should have identical gradient norms
+        4. If not synced, gradient norms will differ (since each rank processes different data)
         """
-        # 计算本卡所有参数的总梯度 norm
+        # Compute total gradient norm on this rank
         total_grad_norm_sq = 0.0
         grad_count = 0
         for p in self.model_params:
@@ -925,16 +925,16 @@ class BasicTrainer:
         
         local_grad_norm = total_grad_norm_sq ** 0.5
         
-        # 确保所有进程到达同一点
+        # Ensure all processes reach the same point
         dist.barrier()
         
-        # 收集所有卡的梯度 norm
+        # Gather gradient norms from all ranks
         grad_norm_tensor = torch.tensor([local_grad_norm], dtype=torch.float64, device=self.device)
         all_grad_norms = [torch.zeros(1, dtype=torch.float64, device=self.device) for _ in range(self.world_size)]
         dist.all_gather(all_grad_norms, grad_norm_tensor)
         all_grad_norms = [g.item() for g in all_grad_norms]
         
-        # 验证所有卡的梯度 norm 是否相同（使用相对误差，容忍 0.1%）
+        # Verify all ranks have the same gradient norm (relative error tolerance: 0.1%)
         ref_norm = all_grad_norms[0]
         if ref_norm > 0:
             is_synced = all(abs(g - ref_norm) / ref_norm < 1e-3 for g in all_grad_norms)
@@ -1010,7 +1010,7 @@ class BasicTrainer:
                     loss, status = self.training_losses(**mb_data)
                     l = loss['loss'] / len(data_list)
                     
-                    # DEBUG: 打印每个 rank 的 loss
+                    # DEBUG: Print loss for each rank
                     if self.debug:
                         print(f'[Rank {self.rank}/{self.world_size}] Step {self.step} batch {i}: loss={loss["loss"].item():.6f}')
                     
@@ -1029,10 +1029,10 @@ class BasicTrainer:
                 elastic_controller_logs.append(self.elastic_controller.log())
         
         # ============================================================
-        # DEBUG: 验证 DDP 梯度同步
-        # 检查 backward 后各卡梯度是否一致
-        # DDP 在最后一个 batch_split 的 backward 时会自动 all_reduce 梯度
-        # 同步后所有卡的梯度应该完全相同
+        # DEBUG: Verify DDP gradient synchronization
+        # Check if gradients are consistent across ranks after backward
+        # DDP automatically all_reduces gradients during the last batch_split's backward
+        # After sync, all ranks should have identical gradients
         # ============================================================
         if self.debug and self.world_size > 1:
             self._verify_gradient_sync()

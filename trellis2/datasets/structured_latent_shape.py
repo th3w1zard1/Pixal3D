@@ -293,7 +293,7 @@ class SLatShapeView(SLatShapeVisMixin, SLat):
         
         if existing_view_cols:
             # Filter rows where all required views are encoded
-            # 注意：NaN 需要被视为 False，所以用 == True 显式比较
+            # Note: NaN should be treated as False, so use == True for explicit comparison
             has_all_views = (metadata[existing_view_cols] == True).all(axis=1)
             metadata = metadata[has_all_views]
             stats[f'With {self.num_views} view latents'] = len(metadata)

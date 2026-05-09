@@ -14,9 +14,9 @@ class Pixal3DImageTo3DPipeline(Pipeline):
     """
     Pipeline for inferring Pixal3D (proj mode) image-to-3D models.
 
-    基于 Trellis2 pipeline，使用 proj 模式进行推理。
-    每个 stage (SS, Shape 512, Shape 1024, Tex 1024) 有独立的 image_cond_model (DinoV3ProjFeatureExtractor)。
-    条件构建使用 camera-aware projection（需要 camera_angle_x, distance, mesh_scale 参数）。
+    Based on Trellis2 pipeline, using proj mode for inference.
+    Each stage (SS, Shape 512, Shape 1024, Tex 1024) has its own image_cond_model (DinoV3ProjFeatureExtractor).
+    Condition building uses camera-aware projection (requires camera_angle_x, distance, mesh_scale parameters).
 
     Args:
         models (dict[str, nn.Module]): The models to use in the pipeline.
@@ -114,13 +114,13 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         pipeline.shape_slat_normalization = args['shape_slat_normalization']
         pipeline.tex_slat_normalization = args['tex_slat_normalization']
 
-        # Proj mode: image_cond_models 需要外部加载后设置，这里先置为 None
+        # Proj mode: image_cond_models need to be loaded externally, set to None here
         pipeline.image_cond_model_ss = None
         pipeline.image_cond_model_shape_512 = None
         pipeline.image_cond_model_shape_1024 = None
         pipeline.image_cond_model_tex_1024 = None
 
-        pipeline.rembg_model = getattr(rembg, args['rembg_model']['name'])(**args['rembg_model']['args'])
+        pipeline.rembg_model = None  # Skip local RMBG loading; use remote client instead
         
         pipeline.low_vram = args.get('low_vram', True)
         pipeline.default_pipeline_type = args.get('default_pipeline_type', '1024_cascade')
@@ -186,7 +186,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         return output
 
     # =========================================================================
-    # Proj 模式条件构建
+    # Proj mode condition building
     # =========================================================================
 
     @torch.no_grad()
@@ -295,7 +295,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         }
 
     # =========================================================================
-    # Sampling methods (保持与 Trellis2 一致)
+    # Sampling methods (consistent with Trellis2)
     # =========================================================================
 
     def sample_sparse_structure(

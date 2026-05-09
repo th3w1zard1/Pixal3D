@@ -101,7 +101,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         pipeline.shape_slat_normalization = args['shape_slat_normalization']
         pipeline.tex_slat_normalization = args['tex_slat_normalization']
 
-        # HACK: 替换 dinov3 模型源为 camenduru 镜像
+        # HACK: Replace dinov3 model source with camenduru mirror
         image_cond_args = args['image_cond_model']['args'].copy()
         if image_cond_args.get('model_name') == 'facebook/dinov3-vitl16-pretrain-lvd1689m':
             image_cond_args['model_name'] = 'camenduru/dinov3-vitl16-pretrain-lvd1689m'

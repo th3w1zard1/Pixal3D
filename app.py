@@ -140,9 +140,15 @@ def init_models():
         pipeline.image_cond_model_shape_1024 = build_image_cond_model(IMAGE_COND_CONFIGS["shape_1024"])
         pipeline.image_cond_model_tex_1024 = build_image_cond_model(IMAGE_COND_CONFIGS["tex_1024"])
         
-        pipeline.cuda()
         pipeline.rembg_model = None  # Use remote BRIA-RMBG-2.0 instead
         pipeline.low_vram = False
+        pipeline.cuda()
+        
+        # Ensure image_cond_models are on GPU
+        pipeline.image_cond_model_ss.cuda()
+        pipeline.image_cond_model_shape_512.cuda()
+        pipeline.image_cond_model_shape_1024.cuda()
+        pipeline.image_cond_model_tex_1024.cuda()
         
         print("[NAF] Pre-loading NAF upsampler model...")
         for attr in ['image_cond_model_ss', 'image_cond_model_shape_512', 'image_cond_model_shape_1024', 'image_cond_model_tex_1024']:
@@ -328,6 +334,10 @@ class _TqdmProgressInterceptor(_original_tqdm):
         self._stage_desc = kwargs.get('desc', 'Processing')
         super().__init__(*args, **kwargs)
     
+    def set_description(self, desc=None, refresh=True):
+        self._stage_desc = desc or 'Processing'
+        super().set_description(desc, refresh)
+    
     def update(self, n=1):
         super().update(n)
         _update_progress(self._stage_desc, self.n, self.total or 0)
@@ -339,6 +349,8 @@ import trellis2.pipelines.samplers.flow_euler as _fe_module
 _fe_module.tqdm = _TqdmProgressInterceptor
 import trellis2.utils.render_utils as _ru_module
 _ru_module.tqdm = _TqdmProgressInterceptor
+import o_voxel.postprocess as _ovp_module
+_ovp_module.tqdm = _TqdmProgressInterceptor
 
 # ============================================================================
 # API Implementation
@@ -494,7 +506,6 @@ def extract_glb_api(state_path: str, decimation_target: int, texture_size: int, 
     mesh = pipeline.decode_latent(shape_slat, tex_slat, res)[0]
     _update_progress("Decoding latent", 1, 1)
     
-    _update_progress("Extracting GLB mesh", 0, 1)
     glb = o_voxel.postprocess.to_glb(
         vertices=mesh.vertices, faces=mesh.faces, attr_volume=mesh.attrs,
         coords=mesh.coords, attr_layout=pipeline.pbr_attr_layout,
