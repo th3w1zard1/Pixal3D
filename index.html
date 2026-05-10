@@ -1073,6 +1073,10 @@
         async function startExtraction() {
             if (!generationResult) return;
 
+            // Clear previous model immediately so it won't show during loading
+            const viewer = document.getElementById('main-3d-viewer');
+            viewer.removeAttribute('src');
+
             showLoading();
             startProgressListener();
             try {
@@ -1087,7 +1091,6 @@
                 const glbUrl = result.data[0].url;
 
                 stopProgressListener();
-                const viewer = document.getElementById('main-3d-viewer');
                 viewer.src = glbUrl;
                 setStep(3);
                 hideLoading();
