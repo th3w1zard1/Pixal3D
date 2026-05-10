@@ -706,6 +706,10 @@
                             <div style="font-family: monospace; font-weight: 700; color: var(--primary); font-size: 0.8rem;">
                                 VIEW_ANGLE: <span id="angle-display">00</span>°
                             </div>
+                            <div id="camera-info" style="font-family: monospace; font-size: 0.75rem; color: var(--text-dim); display: none; border-left: 1px solid var(--border); padding-left: 1rem;">
+                                <span>FOV: <span id="fov-display" style="color: var(--accent);">--</span> rad</span>
+                                <span style="margin-left: 0.75rem;">Dist: <span id="dist-display" style="color: var(--accent);">--</span></span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -962,6 +966,14 @@
                 
                 stopProgressListener();
                 populateFrames(generationResult.render_paths);
+
+                // Display camera info
+                if (generationResult.camera_angle_x != null) {
+                    document.getElementById('fov-display').textContent = generationResult.camera_angle_x.toFixed(3);
+                    document.getElementById('dist-display').textContent = generationResult.distance.toFixed(3);
+                    document.getElementById('camera-info').style.display = 'inline';
+                }
+
                 setStep(2);
                 hideLoading();
                 showToast("Generation complete!");

@@ -443,7 +443,9 @@ def generate_3d(
     _finish_progress()
     return {
         "render_paths": render_files,
-        "state_path": os.path.abspath(state_path)
+        "state_path": os.path.abspath(state_path),
+        "camera_angle_x": camera_params['camera_angle_x'],
+        "distance": camera_params['distance'],
     }
 
 @app.api()
