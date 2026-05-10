@@ -417,6 +417,14 @@
             border-top: 1px solid var(--border);
             background: var(--surface);
             overflow: hidden;
+            position: relative;
+        }
+
+        .examples-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
         }
 
         .examples-grid {
@@ -425,8 +433,7 @@
             gap: 1rem;
             overflow-x: auto;
             overflow-y: hidden;
-            padding-bottom: 0.5rem;
-            scroll-behavior: smooth;
+            padding-bottom: 1rem;
             scrollbar-width: none;
             -ms-overflow-style: none;
         }
@@ -436,14 +443,6 @@
         .examples-track {
             display: flex;
             gap: 1rem;
-            animation: marquee-scroll 180s linear infinite;
-        }
-        .examples-track:hover {
-            animation-play-state: paused;
-        }
-        @keyframes marquee-scroll {
-            0% { transform: translateX(0); }
-            100% { transform: translateX(-50%); }
         }
 
         .example-item {
@@ -460,6 +459,59 @@
         .example-item:hover {
             transform: translateY(-4px);
             border-color: var(--primary);
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.25);
+        }
+
+        /* Gallery Slider */
+        .gallery-slider-wrap {
+            margin-top: 0.75rem;
+            padding: 0 0.25rem;
+        }
+
+        .gallery-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .gallery-slider:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .gallery-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 50%;
+            cursor: grab;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .gallery-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.6);
+        }
+
+        .gallery-slider::-webkit-slider-thumb:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+
+        .gallery-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 50%;
+            border: none;
+            cursor: grab;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
         }
 
         .example-item img {
@@ -733,9 +785,14 @@
 
             <!-- Footer: Examples -->
             <div class="examples-drawer">
-                <h4 style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 1rem;">Sample Gallery</h4>
+                <div class="examples-header">
+                    <h4 style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em;">Sample Gallery</h4>
+                </div>
                 <div class="examples-grid" id="examples-grid">
                     <!-- Injected via JS -->
+                </div>
+                <div class="gallery-slider-wrap">
+                    <input type="range" id="gallery-slider" class="gallery-slider" min="0" max="100" value="0">
                 </div>
             </div>
         </div>
@@ -1141,7 +1198,7 @@
                 'assets/images/s_20_img.webp'
             ];
 
-            // Create track element for seamless loop
+            // Create track element
             const track = document.createElement('div');
             track.className = 'examples-track';
 
@@ -1163,7 +1220,6 @@
                 return div;
             }
 
-            // Add items twice for seamless loop
             samples.forEach(path => track.appendChild(createItem(path)));
             samples.forEach(path => track.appendChild(createItem(path)));
 
@@ -1224,22 +1280,69 @@
             setTimeout(() => t.style.display = 'none', 3000);
         }
 
-        // Enable mouse wheel horizontal scroll for examples gallery
+        // Gallery slider & scroll sync with auto-scroll
         const exGrid = document.getElementById('examples-grid');
-        let wheelTimeout = null;
+        const gallerySlider = document.getElementById('gallery-slider');
+        let isSliderDragging = false;
+        let autoScrollPaused = false;
+        let pauseTimeout = null;
+        const AUTO_SCROLL_SPEED = 0.5; // px per frame
+
+        function updateSliderFromScroll() {
+            if (isSliderDragging) return;
+            const maxScroll = exGrid.scrollWidth - exGrid.clientWidth;
+            if (maxScroll <= 0) {
+                gallerySlider.value = 0;
+                return;
+            }
+            gallerySlider.value = (exGrid.scrollLeft / maxScroll) * 100;
+        }
+
+        exGrid.addEventListener('scroll', updateSliderFromScroll);
+
+        gallerySlider.addEventListener('input', () => {
+            isSliderDragging = true;
+            autoScrollPaused = true;
+            const maxScroll = exGrid.scrollWidth - exGrid.clientWidth;
+            exGrid.scrollTo({ left: (gallerySlider.value / 100) * maxScroll, behavior: 'auto' });
+        });
+        gallerySlider.addEventListener('pointerup', () => { isSliderDragging = false; resumeAutoScrollLater(); });
+        gallerySlider.addEventListener('change', () => { isSliderDragging = false; resumeAutoScrollLater(); });
+
+        // Mouse wheel horizontal scroll
         exGrid.addEventListener('wheel', (e) => {
             if (Math.abs(e.deltaY) > 0) {
                 e.preventDefault();
                 exGrid.scrollLeft += e.deltaY;
-                // Pause animation while scrolling
-                const track = exGrid.querySelector('.examples-track');
-                if (track) track.style.animationPlayState = 'paused';
-                clearTimeout(wheelTimeout);
-                wheelTimeout = setTimeout(() => {
-                    if (track) track.style.animationPlayState = 'running';
-                }, 1500);
+                autoScrollPaused = true;
+                resumeAutoScrollLater();
             }
         }, { passive: false });
+
+        // Pause on hover
+        exGrid.addEventListener('mouseenter', () => { autoScrollPaused = true; });
+        exGrid.addEventListener('mouseleave', () => { resumeAutoScrollLater(500); });
+
+        function resumeAutoScrollLater(delay = 2000) {
+            clearTimeout(pauseTimeout);
+            pauseTimeout = setTimeout(() => { autoScrollPaused = false; }, delay);
+        }
+
+        // Auto-scroll loop via requestAnimationFrame
+        function autoScrollLoop() {
+            if (!autoScrollPaused) {
+                const maxScroll = exGrid.scrollWidth - exGrid.clientWidth;
+                if (maxScroll > 0) {
+                    exGrid.scrollLeft += AUTO_SCROLL_SPEED;
+                    // Loop back to start
+                    if (exGrid.scrollLeft >= maxScroll) {
+                        exGrid.scrollLeft = 0;
+                    }
+                }
+            }
+            requestAnimationFrame(autoScrollLoop);
+        }
+        requestAnimationFrame(autoScrollLoop);
 
         init();
     </script>
