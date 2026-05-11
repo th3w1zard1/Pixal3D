@@ -904,9 +904,7 @@
                 document.getElementById('angle-display').textContent = '00';
 
                 // Reset 3D viewer
-                const v = document.getElementById('main-3d-viewer');
-                v.removeAttribute('src');
-                v.style.visibility = 'visible';
+                resetModelViewer();
 
                 // Reset thumbnails
                 document.getElementById('ref-thumb-2').style.display = 'none';
@@ -1006,6 +1004,18 @@
 
         async function startGeneration() {
             if (!currentFile) return;
+
+            // Clear old preview frames and 3D result
+            generationResult = null;
+            document.getElementById('frame-container').innerHTML = '';
+            document.getElementById('angle-slider').value = 0;
+            document.getElementById('angle-display').textContent = '00';
+            resetModelViewer();
+            document.getElementById('extract-btn').style.display = 'none';
+            document.getElementById('download-btn').style.display = 'none';
+
+            // Stay on step 1 during generation
+            setStep(1);
 
             showLoading();
             startProgressListener();
@@ -1141,14 +1151,36 @@
             if (active) active.classList.add('active');
         }
 
+        // Destroy and recreate model-viewer to fully purge old mesh from WebGL
+        function resetModelViewer() {
+            const container = document.querySelector('#panel-3 .viewer-wrapper');
+            const old = document.getElementById('main-3d-viewer');
+            if (old) old.remove();
+            const mv = document.createElement('model-viewer');
+            mv.id = 'main-3d-viewer';
+            mv.setAttribute('camera-controls', '');
+            mv.setAttribute('auto-rotate', '');
+            mv.setAttribute('camera-orbit', '-180deg 90deg auto');
+            mv.setAttribute('shadow-intensity', '1.5');
+            mv.setAttribute('environment-image', 'neutral');
+            mv.setAttribute('exposure', '1.2');
+            mv.style.width = '100%';
+            mv.style.height = '100%';
+            mv.style.background = 'radial-gradient(circle at 50% 50%, #1a2235 0%, #0b0f1a 100%)';
+            mv.style.visibility = 'hidden';
+            mv.innerHTML = '<div slot="progress-bar" style="background: var(--primary); height: 4px;"></div>';
+            container.appendChild(mv);
+            return mv;
+        }
+
         async function startExtraction() {
             if (!generationResult) return;
 
-            // Fully reset the model-viewer to prevent showing stale mesh
-            const viewer = document.getElementById('main-3d-viewer');
-            viewer.removeAttribute('src');
-            // Force the internal scene to clear by briefly hiding the element
-            viewer.style.visibility = 'hidden';
+            // Switch away from panel-3 immediately so user won't see stale mesh
+            if (currentStep === 3) setStep(2);
+
+            // Destroy old model-viewer and create a fresh one (purges WebGL scene completely)
+            const viewer = resetModelViewer();
 
             showLoading();
             startProgressListener();
