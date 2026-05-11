@@ -904,7 +904,9 @@
                 document.getElementById('angle-display').textContent = '00';
 
                 // Reset 3D viewer
-                document.getElementById('main-3d-viewer').removeAttribute('src');
+                const v = document.getElementById('main-3d-viewer');
+                v.removeAttribute('src');
+                v.style.visibility = 'visible';
 
                 // Reset thumbnails
                 document.getElementById('ref-thumb-2').style.display = 'none';
@@ -1142,9 +1144,11 @@
         async function startExtraction() {
             if (!generationResult) return;
 
-            // Clear previous model immediately so it won't show during loading
+            // Fully reset the model-viewer to prevent showing stale mesh
             const viewer = document.getElementById('main-3d-viewer');
             viewer.removeAttribute('src');
+            // Force the internal scene to clear by briefly hiding the element
+            viewer.style.visibility = 'hidden';
 
             showLoading();
             startProgressListener();
@@ -1160,13 +1164,37 @@
                 const glbUrl = result.data[0].url;
 
                 stopProgressListener();
-                viewer.src = glbUrl;
+
+                // Wait for the new model to fully load before revealing (with timeout fallback)
+                await new Promise((resolve) => {
+                    let settled = false;
+                    const onLoad = () => {
+                        if (settled) return;
+                        settled = true;
+                        viewer.removeEventListener('load', onLoad);
+                        clearTimeout(timer);
+                        resolve();
+                    };
+                    // Timeout fallback: if load event never fires (e.g. model-viewer error),
+                    // resolve anyway after 30s to avoid permanent hang
+                    const timer = setTimeout(() => {
+                        if (settled) return;
+                        settled = true;
+                        viewer.removeEventListener('load', onLoad);
+                        resolve();
+                    }, 30000);
+                    viewer.addEventListener('load', onLoad);
+                    viewer.src = glbUrl;
+                });
+
+                viewer.style.visibility = 'visible';
                 setStep(3);
                 hideLoading();
                 showToast("3D Asset ready!");
             } catch (err) {
                 console.error(err);
                 stopProgressListener();
+                viewer.style.visibility = 'visible';
                 hideLoading();
                 showToast("Extraction failed.");
             }
@@ -1182,7 +1210,6 @@
                 'assets/images/5_img.webp',
                 'assets/images/6_img.png',
                 'assets/images/7_img.png',
-                'assets/images/8_img.png',
                 'assets/images/9_img.png',
                 'assets/images/10_img.webp',
                 'assets/images/11_img.png',
@@ -1194,8 +1221,15 @@
                 'assets/images/s_15_img.png',
                 'assets/images/s_16_img.png',
                 'assets/images/s_18_img.png',
-                'assets/images/s_19_img.png',
-                'assets/images/s_20_img.webp'
+                'assets/images/s_20_img.webp',
+                'assets/images/musicman.png',
+                'assets/images/pizza.png',
+                'assets/images/sculpt.png',
+                'assets/images/treehouse.png',
+                'assets/images/warship.png',
+                'assets/images/5c80e5e03a3b60b6f03eaf555ba1dafc0e4230c472d7e8c8e2c5ca0a0dfcef10.webp',
+                'assets/images/c9340e744541f310bf89838f652602961d3e5950b31cd349bcbfc7e59e15cd2e.webp',
+                'assets/images/f94e2b76494ce2cf1874611273e5fb3d76b395793bb5647492fa85c2ce0a248b.webp'
             ];
 
             // Create track element
