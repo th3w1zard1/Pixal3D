@@ -240,15 +240,8 @@ _thread_local = threading.local()
 
 def _reset_progress(session_id: str):
     _thread_local.active_session = session_id
-    if session_id not in _progress_queues:
-        _progress_queues[session_id] = queue.Queue()
-    # Drain old items
-    q = _progress_queues[session_id]
-    while not q.empty():
-        try:
-            q.get_nowait()
-        except:
-            break
+    # Always recreate the queue (old one may have been consumed or stale)
+    _progress_queues[session_id] = queue.Queue()
 
 def _update_progress(stage: str, step: int, total: int):
     data = {"stage": stage, "step": step, "total": total, "done": False}
@@ -266,11 +259,6 @@ def _finish_progress():
             _progress_queues[session_id].put_nowait({"done": True})
         except:
             pass
-        # Schedule cleanup after a short delay (let SSE client receive the done signal)
-        def _cleanup():
-            time.sleep(5)
-            _progress_queues.pop(session_id, None)
-        threading.Thread(target=_cleanup, daemon=True).start()
 
 # Monkey-patch tqdm to intercept progress
 import tqdm as _tqdm_module
@@ -321,9 +309,9 @@ async def progress_sse(request: Request):
         _progress_queues[session_id] = queue.Queue()
     
     async def event_stream():
-        q = _progress_queues.get(session_id)
         timeout_count = 0
         while True:
+            q = _progress_queues.get(session_id)
             if q:
                 try:
                     data = q.get_nowait()
