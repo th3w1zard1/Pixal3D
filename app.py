@@ -138,7 +138,7 @@ def init_models():
             for i in range(torch.cuda.device_count()):
                 name = torch.cuda.get_device_name(i)
                 cap = torch.cuda.get_device_capability(i)
-                mem = torch.cuda.get_device_properties(i).total_mem / 1024**3
+                mem = torch.cuda.get_device_properties(i).total_memory / 1024**3
                 print(f"[Diagnostics] GPU {i}: {name}, sm_{cap[0]}{cap[1]}, {mem:.1f} GB")
         try:
             res = _sp.run(["nvidia-smi", "--query-gpu=name,compute_cap,memory.total", "--format=csv,noheader"], capture_output=True, text=True, timeout=10)
