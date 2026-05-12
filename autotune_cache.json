@@ -25039,6 +25039,18 @@
                 "maxnreg": null,
                 "pre_hook": null,
                 "ir_override": null
+            },
+            "(23, 7739451, 6, 8, 'torch.float32', 'torch.uint32', 'torch.float32', 'torch.float32')": {
+                "kwargs": {
+                    "BM": 16,
+                    "BK": 8
+                },
+                "num_warps": 2,
+                "num_ctas": 1,
+                "num_stages": 3,
+                "maxnreg": null,
+                "pre_hook": null,
+                "ir_override": null
             }
         },
         "flex_gemm.kernels.triton.spconv.sparse_conv_implicit_gemm.sparse_conv_fwd_implicit_gemm_kernel": {},
