@@ -226,39 +226,46 @@ def unpack_state(state_path):
     return shape_slat, tex_slat, int(data['res'])
 
 # ============================================================================
-# Progress Tracking (SSE-based, tqdm interception, multi-session)
+# Progress Tracking (file-based, cross-process safe for @spaces.GPU)
 # ============================================================================
 
 import asyncio
-import queue
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi import Request
 
-# Per-session progress queues
-_progress_queues: Dict[str, queue.Queue] = {}
+PROGRESS_DIR = os.path.join(TMP_DIR, '_progress')
+os.makedirs(PROGRESS_DIR, exist_ok=True)
+
 _thread_local = threading.local()
+
+def _progress_file(session_id: str) -> str:
+    """Return path to a session's progress JSON file."""
+    return os.path.join(PROGRESS_DIR, f"{session_id}.json")
 
 def _reset_progress(session_id: str):
     _thread_local.active_session = session_id
-    # Always recreate the queue (old one may have been consumed or stale)
-    _progress_queues[session_id] = queue.Queue()
+    _write_progress_file(session_id, {"stage": "Initializing...", "step": 0, "total": 0, "done": False})
 
 def _update_progress(stage: str, step: int, total: int):
-    data = {"stage": stage, "step": step, "total": total, "done": False}
     session_id = getattr(_thread_local, 'active_session', '')
-    if session_id and session_id in _progress_queues:
-        try:
-            _progress_queues[session_id].put_nowait(data)
-        except:
-            pass
+    if session_id:
+        _write_progress_file(session_id, {"stage": stage, "step": step, "total": total, "done": False})
 
 def _finish_progress():
     session_id = getattr(_thread_local, 'active_session', '')
-    if session_id and session_id in _progress_queues:
-        try:
-            _progress_queues[session_id].put_nowait({"done": True})
-        except:
-            pass
+    if session_id:
+        _write_progress_file(session_id, {"done": True})
+
+def _write_progress_file(session_id: str, data: dict):
+    """Atomically write progress JSON to a file (cross-process safe)."""
+    path = _progress_file(session_id)
+    tmp_path = path + ".tmp"
+    try:
+        with open(tmp_path, 'w') as f:
+            json.dump(data, f)
+        os.replace(tmp_path, path)  # atomic on POSIX
+    except Exception:
+        pass
 
 # Monkey-patch tqdm to intercept progress
 import tqdm as _tqdm_module
@@ -302,34 +309,16 @@ async def homepage():
         return HTMLResponse(content=f.read())
 
 @app.get("/progress")
-async def progress_sse(request: Request):
-    """SSE endpoint for real-time progress updates during generation."""
+async def progress_poll(request: Request):
+    """Polling endpoint for real-time progress updates during generation."""
     session_id = request.query_params.get("session_id", "")
-    if session_id and session_id not in _progress_queues:
-        _progress_queues[session_id] = queue.Queue()
-    
-    async def event_stream():
-        timeout_count = 0
-        while True:
-            q = _progress_queues.get(session_id)
-            if q:
-                try:
-                    data = q.get_nowait()
-                    yield f"data: {json.dumps(data)}\n\n"
-                    if data.get("done"):
-                        break
-                    timeout_count = 0
-                except queue.Empty:
-                    yield f": keepalive\n\n"
-                    timeout_count += 1
-            else:
-                yield f": keepalive\n\n"
-                timeout_count += 1
-            # Timeout after 5 minutes of no data
-            if timeout_count > 1000:
-                break
-            await asyncio.sleep(0.3)
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    path = _progress_file(session_id)
+    try:
+        with open(path, 'r') as f:
+            data = json.load(f)
+        return JSONResponse(data)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return JSONResponse({"stage": "Waiting...", "step": 0, "total": 0, "done": False})
 
 @app.api()
 @spaces.GPU(duration=30)

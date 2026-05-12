@@ -1054,8 +1054,8 @@
             }
         }
 
-        // SSE Progress Listener
-        let progressEventSource = null;
+        // Progress Polling
+        let progressInterval = null;
         let lastStageName = "";
         
         function startProgressListener() {
@@ -1067,26 +1067,25 @@
             document.getElementById('progress-bar-fill').style.width = '0%';
             lastStageName = "";
 
-            progressEventSource = new EventSource(`/progress?session_id=${sessionId}`);
-            progressEventSource.onmessage = (event) => {
+            // Poll every 500ms instead of SSE
+            progressInterval = setInterval(async () => {
                 try {
-                    const data = JSON.parse(event.data);
+                    const resp = await fetch(`/progress?session_id=${sessionId}`);
+                    if (!resp.ok) return;
+                    const data = await resp.json();
                     if (data.done) {
                         stopProgressListener();
                         return;
                     }
                     updateProgressUI(data);
                 } catch (e) {}
-            };
-            progressEventSource.onerror = () => {
-                // Silently ignore SSE errors, generation continues
-            };
+            }, 500);
         }
 
         function stopProgressListener() {
-            if (progressEventSource) {
-                progressEventSource.close();
-                progressEventSource = null;
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
             }
         }
 
