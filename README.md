@@ -1,5 +1,5 @@
 ---
-title: Pixal3D T
+title: Pixal3D
 emoji: 🏆
 colorFrom: indigo
 colorTo: gray
