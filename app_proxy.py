@@ -19,6 +19,17 @@ import gradio as gr
 REMOTE_URL = os.environ.get("REMOTE_URL", "")
 GPU_NAME = os.environ.get("GPU_NAME", "")
 
+# Multi-instance support: REMOTE_URL as #0, REMOTE_URL_1, REMOTE_URL_2, REMOTE_URL_3
+REMOTE_URLS = []
+if REMOTE_URL:
+    name0 = os.environ.get("REMOTE_NAME", "Instance 0")
+    REMOTE_URLS.append({"url": REMOTE_URL, "name": name0})
+for i in range(1, 4):
+    url = os.environ.get(f"REMOTE_URL_{i}", "")
+    name = os.environ.get(f"REMOTE_NAME_{i}", f"Instance {i}")
+    if url:
+        REMOTE_URLS.append({"url": url, "name": name})
+
 PROXY_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -122,6 +133,65 @@ PROXY_HTML = """
             border-radius: 4px;
             font-size: 13px;
         }}
+        .cards-container {{
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            overflow-y: auto;
+        }}
+        .cards-grid {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 28px;
+            max-width: 1000px;
+            width: 100%;
+        }}
+        .instance-card {{
+            width: 100%;
+            background: rgba(22, 28, 45, 0.8);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 24px;
+            padding: 60px 48px;
+            text-align: center;
+            transition: transform 0.2s, border-color 0.2s;
+        }}
+        .instance-card:hover {{
+            transform: translateY(-4px);
+            border-color: rgba(129, 140, 248, 0.4);
+        }}
+        .instance-card h3 {{
+            font-size: 26px;
+            margin-bottom: 16px;
+            color: #f1f5f9;
+        }}
+        .instance-card .url-hint {{
+            font-size: 13px;
+            color: #64748b;
+            margin-top: 18px;
+            word-break: break-all;
+        }}
+        .instance-card .btn-go {{
+            display: inline-block;
+            margin-top: 24px;
+            padding: 16px 44px;
+            background: linear-gradient(135deg, #818cf8, #10b981);
+            color: #ffffff !important;
+            border-radius: 12px;
+            text-decoration: none !important;
+            font-weight: 700;
+            font-size: 18px;
+            transition: opacity 0.2s;
+        }}
+        .instance-card .btn-go:hover {{
+            opacity: 0.85;
+            text-decoration: none !important;
+        }}
+        .instance-card .btn-go:hover {{
+            opacity: 0.85;
+        }}
         .link-bar {{
             padding: 8px 24px;
             background: rgba(16, 185, 129, 0.08);
@@ -153,31 +223,36 @@ PROXY_HTML = """
 
 
 def build_page():
-    if REMOTE_URL:
+    # If multi-instance URLs are configured, show cards
+    if REMOTE_URLS:
         status_color = "#10b981"
         status_anim = "pulse 2s infinite"
-        status_text = "Connected to remote GPU instance"
+        status_text = f"{len(REMOTE_URLS)} instance(s) available"
+        
+        cards_html = ""
+        for i, inst in enumerate(REMOTE_URLS):
+            cards_html += f"""
+            <div class="instance-card">
+                <h3>🖥️ {inst['name']}</h3>
+                <p style="color:#94a3b8; font-size:14px; margin-bottom:8px;">⚡ Shared GPU — requests are queued</p>
+                <a href="{inst['url']}" target="_blank" rel="noopener noreferrer" class="btn-go">
+                    Open Instance {i+1}
+                </a>
+                <p class="url-hint"><code>{inst['url']}</code></p>
+            </div>
+            """
+        
         content = f"""
-        <div class="no-url">
-            <div class="no-url-card">
-                <h2>🚀 Redirecting to Pixal3D...</h2>
-                <p style="color:#fbbf24; margin-bottom:12px;">⚠️ Due to a temporary HuggingFace error, this Space is currently unavailable. We have prepared a temporary locally-deployed instance for you.</p>
-                <p style="color:#f59e0b; margin-bottom:12px;">⚡ All users share a single GPU — requests are queued. Please be patient.</p>
-                <p>You will be redirected automatically.</p>
-                <p style="margin-top:16px;">
-                    <a href="{REMOTE_URL}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding:12px 32px; background:linear-gradient(135deg,#818cf8,#10b981); color:#fff; border-radius:8px; text-decoration:none; font-weight:600; font-size:15px;">
-                        Click here if not redirected
-                    </a>
-                </p>
-                <p style="margin-top:16px; font-size:12px; color:#64748b;">Target: <code>{REMOTE_URL}</code></p>
+        <div class="cards-container">
+            <div style="width:100%; text-align:center; margin-bottom:16px;">
+                <h2 style="font-size:28px; margin-bottom:12px;">🚀 Choose a Pixal3D Instance</h2>
+                <p style="color:#fbbf24; font-size:15px; margin-bottom:8px;">⚠️ Due to a temporary HuggingFace error, this Space is currently unavailable. Please use one of the instances below.</p>
+                <p style="color:#10b981; font-size:14px; margin-top:10px; font-weight:600;">💡 After entering, check the top-left corner for the current queue count.</p>
+            </div>
+            <div class="cards-grid">
+                {cards_html}
             </div>
         </div>
-        <script>
-            // Auto redirect in new tab after a short delay
-            setTimeout(function() {{
-                window.open("{REMOTE_URL}", "_blank");
-            }}, 1500);
-        </script>
         """
     else:
         status_color = "#ef4444"
