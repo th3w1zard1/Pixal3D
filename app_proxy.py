@@ -28,11 +28,12 @@ PROXY_HTML = """
     <title>Pixal3D | AI Image-to-3D</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
+        html, body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #0b0f1a;
             color: #f1f5f9;
-            min-height: 100vh;
+            height: 100%;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
         }}
@@ -164,7 +165,7 @@ def build_page():
                 <p style="color:#f59e0b; margin-bottom:12px;">⚡ All users share a single GPU — requests are queued. Please be patient.</p>
                 <p>You will be redirected automatically.</p>
                 <p style="margin-top:16px;">
-                    <a href="{REMOTE_URL}" style="display:inline-block; padding:12px 32px; background:linear-gradient(135deg,#818cf8,#10b981); color:#fff; border-radius:8px; text-decoration:none; font-weight:600; font-size:15px;">
+                    <a href="{REMOTE_URL}" target="_blank" rel="noopener noreferrer" style="display:inline-block; padding:12px 32px; background:linear-gradient(135deg,#818cf8,#10b981); color:#fff; border-radius:8px; text-decoration:none; font-weight:600; font-size:15px;">
                         Click here if not redirected
                     </a>
                 </p>
@@ -172,9 +173,9 @@ def build_page():
             </div>
         </div>
         <script>
-            // Auto redirect after a short delay
+            // Auto redirect in new tab after a short delay
             setTimeout(function() {{
-                window.location.href = "{REMOTE_URL}";
+                window.open("{REMOTE_URL}", "_blank");
             }}, 1500);
         </script>
         """
@@ -207,7 +208,7 @@ def build_page():
 # Use a simple Gradio Blocks app with HTML component
 with gr.Blocks(
     title="Pixal3D | AI Image-to-3D",
-    css="footer {display:none !important;} .gradio-container {padding:0 !important; max-width:100% !important;} #proxy-frame {height:100vh; padding:0;}",
+    css="footer {display:none !important;} .gradio-container {padding:0 !important; max-width:100% !important; height:100vh !important; overflow:hidden !important;} #proxy-frame {height:100%; max-height:100vh; padding:0; overflow:hidden;}",
     theme=gr.themes.Base(),
 ) as demo:
     gr.HTML(build_page(), elem_id="proxy-frame")
