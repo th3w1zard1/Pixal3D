@@ -4,41 +4,8 @@ import argparse
 import math
 import time
 import shutil
-
-# ============================================================================
-# GPU / CUDA Environment Diagnostics
-# ============================================================================
-import torch
-print("=" * 60)
-print("[Diagnostics] PyTorch version:", torch.__version__)
-print("[Diagnostics] CUDA available:", torch.cuda.is_available())
-if torch.cuda.is_available():
-    print("[Diagnostics] CUDA version:", torch.version.cuda)
-    print("[Diagnostics] cuDNN version:", torch.backends.cudnn.version())
-    for i in range(torch.cuda.device_count()):
-        name = torch.cuda.get_device_name(i)
-        cap = torch.cuda.get_device_capability(i)
-        mem = torch.cuda.get_device_properties(i).total_mem / 1024**3
-        print(f"[Diagnostics] GPU {i}: {name}, compute capability: sm_{cap[0]}{cap[1]}, memory: {mem:.1f} GB")
-else:
-    print("[Diagnostics] WARNING: No CUDA GPU detected!")
-
-try:
-    import flash_attn_3
-    print("[Diagnostics] flash_attn_3 imported OK")
-    from flash_attn_interface import flash_attn_func
-    print("[Diagnostics] flash_attn_func imported OK")
-except Exception as e:
-    print(f"[Diagnostics] flash_attn_3 import FAILED: {e}")
-
-try:
-    result = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=10)
-    print("[Diagnostics] nvidia-smi:\n" + result.stdout[:500])
-except Exception as e:
-    print(f"[Diagnostics] nvidia-smi failed: {e}")
-print("=" * 60)
-
 import cv2
+import torch
 import numpy as np
 import base64
 import io
@@ -159,6 +126,26 @@ def init_models():
     with init_lock:
         if pipeline is not None:
             return
+
+        # GPU / CUDA Diagnostics (runs when GPU is allocated)
+        import subprocess as _sp
+        print("=" * 60)
+        print("[Diagnostics] PyTorch version:", torch.__version__)
+        print("[Diagnostics] CUDA available:", torch.cuda.is_available())
+        if torch.cuda.is_available():
+            print("[Diagnostics] CUDA version:", torch.version.cuda)
+            print("[Diagnostics] cuDNN version:", torch.backends.cudnn.version())
+            for i in range(torch.cuda.device_count()):
+                name = torch.cuda.get_device_name(i)
+                cap = torch.cuda.get_device_capability(i)
+                mem = torch.cuda.get_device_properties(i).total_mem / 1024**3
+                print(f"[Diagnostics] GPU {i}: {name}, sm_{cap[0]}{cap[1]}, {mem:.1f} GB")
+        try:
+            res = _sp.run(["nvidia-smi", "--query-gpu=name,compute_cap,memory.total", "--format=csv,noheader"], capture_output=True, text=True, timeout=10)
+            print("[Diagnostics] nvidia-smi:", res.stdout.strip())
+        except Exception as e:
+            print(f"[Diagnostics] nvidia-smi failed: {e}")
+        print("=" * 60)
 
         model_path = "TencentARC/Pixal3D-T"
         print(f"[Pipeline] Loading from {model_path}...")
