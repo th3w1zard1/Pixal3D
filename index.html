@@ -1020,6 +1020,8 @@
             showLoading();
             startProgressListener();
             try {
+                // Register in queue immediately (before Gradio dispatch delay)
+                await fetch(`/queue/join?session_id=${sessionId}`);
                 const params = {
                     image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
                     seed: parseInt(document.getElementById('seed').value),
@@ -1067,14 +1069,59 @@
             document.getElementById('progress-bar-fill').style.width = '0%';
             lastStageName = "";
 
-            // Poll every 500ms instead of SSE
+            // Poll every 500ms: check queue status + progress
+            let queuePollCount = 0;
             progressInterval = setInterval(async () => {
+                queuePollCount++;
                 try {
+                    // Check queue status first
+                    const qResp = await fetch(`/queue?session_id=${sessionId}`);
+                    if (qResp.ok) {
+                        const q = await qResp.json();
+                        if (q.position > 0) {
+                            // We are registered and waiting, position = number of tasks ahead
+                            document.getElementById('progress-stage-name').textContent = 
+                                `In queue: ${q.position} request${q.position > 1 ? 's' : ''} ahead`;
+                            document.getElementById('progress-step-text').textContent = 'Waiting for GPU...';
+                            document.getElementById('progress-bar-fill').style.width = '0%';
+                            return;
+                        }
+                        if (q.position === -2) {
+                            // Registered, GPU is free, about to start
+                            document.getElementById('progress-stage-name').textContent = 'Connecting to GPU...';
+                            document.getElementById('progress-step-text').textContent = '';
+                            document.getElementById('progress-bar-fill').style.width = '0%';
+                            return;
+                        }
+                        if (q.position === -1) {
+                            // Not registered yet (shouldn't happen often since we call /queue/join first)
+                            if (q.total_ahead_for_unregistered > 0) {
+                                const ahead = q.total_ahead_for_unregistered;
+                                document.getElementById('progress-stage-name').textContent = 
+                                    `In queue: ${ahead} request${ahead > 1 ? 's' : ''} ahead`;
+                                document.getElementById('progress-step-text').textContent = 'Waiting for GPU...';
+                            } else {
+                                document.getElementById('progress-stage-name').textContent = 'Connecting to GPU...';
+                                document.getElementById('progress-step-text').textContent = '';
+                            }
+                            document.getElementById('progress-bar-fill').style.width = '0%';
+                            return;
+                        }
+                        // position == 0 means we are currently running
+                    }
+
                     const resp = await fetch(`/progress?session_id=${sessionId}`);
                     if (!resp.ok) return;
                     const data = await resp.json();
                     if (data.done) {
                         stopProgressListener();
+                        return;
+                    }
+                    // Don't show bare "Waiting..." from empty progress file
+                    if (data.stage === "Waiting..." && data.step === 0 && data.total === 0) {
+                        document.getElementById('progress-stage-name').textContent = 'Preparing inference...';
+                        document.getElementById('progress-step-text').textContent = '';
+                        document.getElementById('progress-bar-fill').style.width = '0%';
                         return;
                     }
                     updateProgressUI(data);
@@ -1184,6 +1231,8 @@
             showLoading();
             startProgressListener();
             try {
+                // Register in queue immediately (before Gradio dispatch delay)
+                await fetch(`/queue/join?session_id=${sessionId}`);
                 const params = {
                     state_path: generationResult.state_path,
                     decimation_target: parseInt(document.getElementById('decimation').value),
