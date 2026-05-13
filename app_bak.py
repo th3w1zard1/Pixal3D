@@ -256,23 +256,28 @@ from fastapi import Request
 PROGRESS_DIR = os.path.join(TMP_DIR, '_progress')
 os.makedirs(PROGRESS_DIR, exist_ok=True)
 
-_thread_local = threading.local()
+_active_session_id = ""
+_active_session_lock = threading.Lock()
 
 def _progress_file(session_id: str) -> str:
     """Return path to a session's progress JSON file."""
     return os.path.join(PROGRESS_DIR, f"{session_id}.json")
 
 def _reset_progress(session_id: str):
-    _thread_local.active_session = session_id
+    global _active_session_id
+    with _active_session_lock:
+        _active_session_id = session_id
     _write_progress_file(session_id, {"stage": "Initializing...", "step": 0, "total": 0, "done": False})
 
 def _update_progress(stage: str, step: int, total: int):
-    session_id = getattr(_thread_local, 'active_session', '')
+    with _active_session_lock:
+        session_id = _active_session_id
     if session_id:
         _write_progress_file(session_id, {"stage": stage, "step": step, "total": total, "done": False})
 
 def _finish_progress():
-    session_id = getattr(_thread_local, 'active_session', '')
+    with _active_session_lock:
+        session_id = _active_session_id
     if session_id:
         _write_progress_file(session_id, {"done": True})
 
