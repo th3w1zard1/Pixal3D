@@ -26,7 +26,7 @@ init_lock = threading.Lock()
 
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-os.environ["ATTN_BACKEND"] = "flash_attn_3"
+os.environ["ATTN_BACKEND"] = "flash_attn_2"
 os.environ["FLEX_GEMM_AUTOTUNE_CACHE_PATH"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'autotune_cache.json')
 os.environ["FLEX_GEMM_AUTOTUNER_VERBOSE"] = '1'
 
@@ -324,7 +324,7 @@ app = Server()
 
 @app.get("/")
 async def homepage():
-    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index_bak.html")
     with open(html_path, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
@@ -490,4 +490,4 @@ if __name__ == "__main__":
     # Pre-initialize models before launching the server
     init_models()
     
-    app.launch(show_error=True, share=True)
+    app.launch(show_error=True, share=True,server_port=8123)
