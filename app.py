@@ -17,8 +17,10 @@ from PIL import Image
 
 import threading
 from contextlib import contextmanager
+
 try:
     import nest_asyncio
+
     nest_asyncio.apply()
 except ImportError:
     pass
@@ -35,20 +37,24 @@ _pending_sessions: list[str] = []
 _pending_times: dict[str, float] = {}
 _PENDING_TIMEOUT = 600
 
-os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["ATTN_BACKEND"] = "flash_attn_2"
-os.environ["FLEX_GEMM_AUTOTUNE_CACHE_PATH"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'autotune_cache.json')
-os.environ["FLEX_GEMM_AUTOTUNER_VERBOSE"] = '1'
+os.environ["FLEX_GEMM_AUTOTUNE_CACHE_PATH"] = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "autotune_cache.json"
+)
+os.environ["FLEX_GEMM_AUTOTUNER_VERBOSE"] = "1"
 
 try:
     import spaces
 except ImportError:
+
     class _FakeSpaces:
         @staticmethod
         def GPU(*args, **kwargs):
             def decorator(fn):
                 return fn
+
             return decorator
 
     spaces = _FakeSpaces()
@@ -69,16 +75,32 @@ from space_runtime import (
 # ============================================================================
 
 MAX_SEED = np.iinfo(np.int32).max
-TMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tmp')
+TMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp")
 os.makedirs(TMP_DIR, exist_ok=True)
 
 MODES = [
     {"name": "Normal", "icon": "assets/app/normal.png", "render_key": "normal"},
     {"name": "Clay render", "icon": "assets/app/clay.png", "render_key": "clay"},
-    {"name": "Base color", "icon": "assets/app/basecolor.png", "render_key": "base_color"},
-    {"name": "HDRI forest", "icon": "assets/app/hdri_forest.png", "render_key": "shaded_forest"},
-    {"name": "HDRI sunset", "icon": "assets/app/hdri_sunset.png", "render_key": "shaded_sunset"},
-    {"name": "HDRI courtyard", "icon": "assets/app/hdri_courtyard.png", "render_key": "shaded_courtyard"},
+    {
+        "name": "Base color",
+        "icon": "assets/app/basecolor.png",
+        "render_key": "base_color",
+    },
+    {
+        "name": "HDRI forest",
+        "icon": "assets/app/hdri_forest.png",
+        "render_key": "shaded_forest",
+    },
+    {
+        "name": "HDRI sunset",
+        "icon": "assets/app/hdri_sunset.png",
+        "render_key": "shaded_sunset",
+    },
+    {
+        "name": "HDRI courtyard",
+        "icon": "assets/app/hdri_courtyard.png",
+        "render_key": "shaded_courtyard",
+    },
 ]
 STEPS = 8
 
@@ -126,17 +148,24 @@ IMAGE_COND_CONFIGS = {
 # Model Loading
 # ============================================================================
 
+
 def build_image_cond_model(config: dict):
-    from trellis2.trainers.flow_matching.mixins.image_conditioned_proj import DinoV3ProjFeatureExtractor
+    from trellis2.trainers.flow_matching.mixins.image_conditioned_proj import (
+        DinoV3ProjFeatureExtractor,
+    )
+
     model = DinoV3ProjFeatureExtractor(**config)
     model.eval()
     return model
 
+
 def load_moge_model(device="cuda", model_name=MOGE_MODEL_NAME):
     from moge.model.v2 import MoGeModel
+
     moge_model = MoGeModel.from_pretrained(model_name).to(device)
     moge_model.eval()
     return moge_model
+
 
 # Global instances (lazy loaded or loaded at start)
 pipeline = None
@@ -268,15 +297,18 @@ def export_basic_glb(mesh, session_id: str = "") -> str:
         faces=mesh.faces.detach().cpu().numpy(),
         process=False,
     )
-    rot = np.array([
-        [-1,  0,  0,  0],
-        [ 0,  0, -1,  0],
-        [ 0, -1,  0,  0],
-        [ 0,  0,  0,  1],
-    ], dtype=np.float64)
+    rot = np.array(
+        [
+            [-1, 0, 0, 0],
+            [0, 0, -1, 0],
+            [0, -1, 0, 0],
+            [0, 0, 0, 1],
+        ],
+        dtype=np.float64,
+    )
     trimesh_mesh.apply_transform(rot)
     suffix = f"_{session_id[:8]}" if session_id else ""
-    out_glb = os.path.join(TMP_DIR, f"result_cpu{suffix}_{int(time.time()*1000)}.glb")
+    out_glb = os.path.join(TMP_DIR, f"result_cpu{suffix}_{int(time.time() * 1000)}.glb")
     trimesh_mesh.export(out_glb)
     return out_glb
 
@@ -316,6 +348,7 @@ def start_runtime_warmup():
     )
     return warmup_thread
 
+
 def init_models():
     global pipeline, moge_model, envmap, current_runtime_device
     with init_lock:
@@ -326,6 +359,7 @@ def init_models():
 
         # GPU / CUDA Diagnostics (runs when GPU is allocated)
         import subprocess as _sp
+
         print("=" * 60)
         print("[Diagnostics] PyTorch version:", torch.__version__)
         print("[Diagnostics] CUDA available:", torch.cuda.is_available())
@@ -336,9 +370,20 @@ def init_models():
                 name = torch.cuda.get_device_name(i)
                 cap = torch.cuda.get_device_capability(i)
                 mem = torch.cuda.get_device_properties(i).total_memory / 1024**3
-                print(f"[Diagnostics] GPU {i}: {name}, sm_{cap[0]}{cap[1]}, {mem:.1f} GB")
+                print(
+                    f"[Diagnostics] GPU {i}: {name}, sm_{cap[0]}{cap[1]}, {mem:.1f} GB"
+                )
         try:
-            res = _sp.run(["nvidia-smi", "--query-gpu=name,compute_cap,memory.total", "--format=csv,noheader"], capture_output=True, text=True, timeout=10)
+            res = _sp.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,compute_cap,memory.total",
+                    "--format=csv,noheader",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
             print("[Diagnostics] nvidia-smi:", res.stdout.strip())
         except Exception as e:
             print(f"[Diagnostics] nvidia-smi failed: {e}")
@@ -350,37 +395,84 @@ def init_models():
             resolve_pipeline_source(model_path)
         )
         _set_dense_attention_backend("cuda")
-        
+
         print("[ImageCond] Building DinoV3ProjFeatureExtractor models...")
         pipeline.image_cond_model_ss = build_image_cond_model(IMAGE_COND_CONFIGS["ss"])
-        pipeline.image_cond_model_shape_512 = build_image_cond_model(IMAGE_COND_CONFIGS["shape_512"])
-        pipeline.image_cond_model_shape_1024 = build_image_cond_model(IMAGE_COND_CONFIGS["shape_1024"])
-        pipeline.image_cond_model_tex_1024 = build_image_cond_model(IMAGE_COND_CONFIGS["tex_1024"])
-        
+        pipeline.image_cond_model_shape_512 = build_image_cond_model(
+            IMAGE_COND_CONFIGS["shape_512"]
+        )
+        pipeline.image_cond_model_shape_1024 = build_image_cond_model(
+            IMAGE_COND_CONFIGS["shape_1024"]
+        )
+        pipeline.image_cond_model_tex_1024 = build_image_cond_model(
+            IMAGE_COND_CONFIGS["tex_1024"]
+        )
+
         pipeline.low_vram = False
         pipeline.cuda()
-        
+
         # Ensure image_cond_models are on GPU
         pipeline.image_cond_model_ss.cuda()
         pipeline.image_cond_model_shape_512.cuda()
         pipeline.image_cond_model_shape_1024.cuda()
         pipeline.image_cond_model_tex_1024.cuda()
-        
+
         print("[NAF] Pre-loading NAF upsampler model...")
-        for attr in ['image_cond_model_ss', 'image_cond_model_shape_512', 'image_cond_model_shape_1024', 'image_cond_model_tex_1024']:
+        for attr in [
+            "image_cond_model_ss",
+            "image_cond_model_shape_512",
+            "image_cond_model_shape_1024",
+            "image_cond_model_tex_1024",
+        ]:
             model = getattr(pipeline, attr, None)
-            if model is not None and getattr(model, 'use_naf_upsample', False):
+            if model is not None and getattr(model, "use_naf_upsample", False):
                 model._load_naf()
-                
+
         print("[MoGe-2] Loading model for camera estimation...")
         moge_model = load_moge_model(device="cuda")
-        
+
         print("[EnvMap] Loading environment maps...")
         _base = os.path.dirname(os.path.abspath(__file__))
         envmap = {
-            'forest': EnvMap(torch.tensor(cv2.cvtColor(cv2.imread(os.path.join(_base, 'assets/hdri/forest.exr'), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB), dtype=torch.float32, device='cuda')),
-            'sunset': EnvMap(torch.tensor(cv2.cvtColor(cv2.imread(os.path.join(_base, 'assets/hdri/sunset.exr'), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB), dtype=torch.float32, device='cuda')),
-            'courtyard': EnvMap(torch.tensor(cv2.cvtColor(cv2.imread(os.path.join(_base, 'assets/hdri/courtyard.exr'), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB), dtype=torch.float32, device='cuda')),
+            "forest": EnvMap(
+                torch.tensor(
+                    cv2.cvtColor(
+                        cv2.imread(
+                            os.path.join(_base, "assets/hdri/forest.exr"),
+                            cv2.IMREAD_UNCHANGED,
+                        ),
+                        cv2.COLOR_BGR2RGB,
+                    ),
+                    dtype=torch.float32,
+                    device="cuda",
+                )
+            ),
+            "sunset": EnvMap(
+                torch.tensor(
+                    cv2.cvtColor(
+                        cv2.imread(
+                            os.path.join(_base, "assets/hdri/sunset.exr"),
+                            cv2.IMREAD_UNCHANGED,
+                        ),
+                        cv2.COLOR_BGR2RGB,
+                    ),
+                    dtype=torch.float32,
+                    device="cuda",
+                )
+            ),
+            "courtyard": EnvMap(
+                torch.tensor(
+                    cv2.cvtColor(
+                        cv2.imread(
+                            os.path.join(_base, "assets/hdri/courtyard.exr"),
+                            cv2.IMREAD_UNCHANGED,
+                        ),
+                        cv2.COLOR_BGR2RGB,
+                    ),
+                    dtype=torch.float32,
+                    device="cuda",
+                )
+            ),
         }
         current_runtime_device = "cuda"
 
@@ -399,9 +491,11 @@ def get_preprocess_model():
         return preprocess_model
 
 
-def preprocess_image_for_ui(input_image: Image.Image, bg_color: tuple = (0, 0, 0)) -> Image.Image:
+def preprocess_image_for_ui(
+    input_image: Image.Image, bg_color: tuple = (0, 0, 0)
+) -> Image.Image:
     has_alpha = False
-    if input_image.mode == 'RGBA':
+    if input_image.mode == "RGBA":
         alpha = np.array(input_image)[:, :, 3]
         if not np.all(alpha == 255):
             has_alpha = True
@@ -417,12 +511,17 @@ def preprocess_image_for_ui(input_image: Image.Image, bg_color: tuple = (0, 0, 0
     if has_alpha:
         output = input_image
     else:
-        output = get_preprocess_model()(input_image.convert('RGB'))
+        output = get_preprocess_model()(input_image.convert("RGB"))
 
     output_np = np.array(output)
     alpha = output_np[:, :, 3]
     bbox = np.argwhere(alpha > 0.8 * 255)
-    bbox = np.min(bbox[:, 1]), np.min(bbox[:, 0]), np.max(bbox[:, 1]), np.max(bbox[:, 0])
+    bbox = (
+        np.min(bbox[:, 1]),
+        np.min(bbox[:, 0]),
+        np.max(bbox[:, 1]),
+        np.max(bbox[:, 0]),
+    )
     center = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
     size = int(max(bbox[2] - bbox[0], bbox[3] - bbox[1]) * 1.1)
     bbox = (
@@ -439,16 +538,21 @@ def preprocess_image_for_ui(input_image: Image.Image, bg_color: tuple = (0, 0, 0
     composited = rgb * a + bg * (1.0 - a)
     return Image.fromarray((np.clip(composited, 0, 1) * 255).astype(np.uint8))
 
+
 # ============================================================================
 # Utilities
 # ============================================================================
+
 
 def compute_f_pixels(camera_angle_x: float, resolution: int) -> float:
     focal_length = 16.0 / torch.tan(torch.tensor(camera_angle_x / 2.0))
     f_pixels = focal_length * resolution / 32.0
     return float(f_pixels.item())
 
-def distance_from_fov(camera_angle_x, grid_point, target_point, mesh_scale, image_resolution):
+
+def distance_from_fov(
+    camera_angle_x, grid_point, target_point, mesh_scale, image_resolution
+):
     rotation_matrix = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
     gp = grid_point.to(torch.float32) @ rotation_matrix.T
     gp = gp / mesh_scale / 2
@@ -460,7 +564,10 @@ def distance_from_fov(camera_angle_x, grid_point, target_point, mesh_scale, imag
     distance_x = f_pixels * xw / x_ndc - yw
     return {"distance_from_x": float(distance_x), "f_pixels": float(f_pixels)}
 
-def get_camera_params_wild_moge(image_path, device="cuda", mesh_scale=1.0, extend_pixel=0, image_resolution=512):
+
+def get_camera_params_wild_moge(
+    image_path, device="cuda", mesh_scale=1.0, extend_pixel=0, image_resolution=512
+):
     pil_image = Image.open(image_path).convert("RGB")
     width, height = pil_image.size
     image_np = np.array(pil_image).astype(np.float32) / 255.0
@@ -474,23 +581,34 @@ def get_camera_params_wild_moge(image_path, device="cuda", mesh_scale=1.0, exten
 
     grid_point = torch.tensor([-1.0, 0.0, 0.0])
     distance = distance_from_fov(
-        camera_angle_x, grid_point,
+        camera_angle_x,
+        grid_point,
         torch.tensor([0 - extend_pixel, image_resolution - 1 + extend_pixel]),
-        mesh_scale, image_resolution
+        mesh_scale,
+        image_resolution,
     )["distance_from_x"]
-    return {'camera_angle_x': camera_angle_x, 'distance': distance, 'mesh_scale': mesh_scale}
+    return {
+        "camera_angle_x": camera_angle_x,
+        "distance": distance,
+        "mesh_scale": mesh_scale,
+    }
+
 
 def pack_state(shape_slat, tex_slat, res):
     state_data = {
-        'shape_slat_feats': shape_slat.feats.cpu().numpy(),
-        'tex_slat_feats': tex_slat.feats.cpu().numpy(),
-        'coords': shape_slat.coords.cpu().numpy(),
-        'res': res,
+        "shape_slat_feats": shape_slat.feats.cpu().numpy(),
+        "tex_slat_feats": tex_slat.feats.cpu().numpy(),
+        "coords": shape_slat.coords.cpu().numpy(),
+        "res": res,
     }
     import random
-    state_path = os.path.join(TMP_DIR, f"state_{int(time.time()*1000)}_{random.randint(0,9999):04d}.npz")
+
+    state_path = os.path.join(
+        TMP_DIR, f"state_{int(time.time() * 1000)}_{random.randint(0, 9999):04d}.npz"
+    )
     np.savez_compressed(state_path, **state_data)
     return state_path
+
 
 def unpack_state(state_path, device: Union[str, torch.device] = "cuda"):
     from trellis2.modules.sparse import SparseTensor
@@ -498,11 +616,14 @@ def unpack_state(state_path, device: Union[str, torch.device] = "cuda"):
     normalized = _normalize_device(device)
     data = np.load(state_path)
     shape_slat = SparseTensor(
-        feats=torch.from_numpy(data['shape_slat_feats']).to(normalized),
-        coords=torch.from_numpy(data['coords']).to(normalized),
+        feats=torch.from_numpy(data["shape_slat_feats"]).to(normalized),
+        coords=torch.from_numpy(data["coords"]).to(normalized),
     )
-    tex_slat = shape_slat.replace(torch.from_numpy(data['tex_slat_feats']).to(normalized))
-    return shape_slat, tex_slat, int(data['res'])
+    tex_slat = shape_slat.replace(
+        torch.from_numpy(data["tex_slat_feats"]).to(normalized)
+    )
+    return shape_slat, tex_slat, int(data["res"])
+
 
 # ============================================================================
 # Progress Tracking (file-based, cross-process safe for @spaces.GPU)
@@ -511,31 +632,40 @@ def unpack_state(state_path, device: Union[str, torch.device] = "cuda"):
 import asyncio
 from fastapi import Request
 
-PROGRESS_DIR = os.path.join(TMP_DIR, '_progress')
+PROGRESS_DIR = os.path.join(TMP_DIR, "_progress")
 os.makedirs(PROGRESS_DIR, exist_ok=True)
 
 _thread_local = threading.local()
+
 
 def _progress_file(session_id: str) -> str:
     """Return path to a session's progress JSON file."""
     return os.path.join(PROGRESS_DIR, f"{session_id}.json")
 
+
 def _reset_progress(session_id: str):
     _thread_local.active_session = session_id
-    _write_progress_file(session_id, {"stage": "Initializing...", "step": 0, "total": 0, "done": False})
+    _write_progress_file(
+        session_id, {"stage": "Initializing...", "step": 0, "total": 0, "done": False}
+    )
+
 
 def _update_progress(stage: str, step: int, total: int):
-    session_id = getattr(_thread_local, 'active_session', '')
+    session_id = getattr(_thread_local, "active_session", "")
     if session_id:
-        _write_progress_file(session_id, {"stage": stage, "step": step, "total": total, "done": False})
+        _write_progress_file(
+            session_id, {"stage": stage, "step": step, "total": total, "done": False}
+        )
+
 
 def _finish_progress():
-    session_id = getattr(_thread_local, 'active_session', '')
+    session_id = getattr(_thread_local, "active_session", "")
     if session_id:
         _write_progress_file(session_id, {"done": True})
 
+
 def _fail_progress(stage: str, error: Exception):
-    session_id = getattr(_thread_local, 'active_session', '')
+    session_id = getattr(_thread_local, "active_session", "")
     if session_id:
         _write_progress_file(
             session_id,
@@ -550,35 +680,40 @@ def _fail_progress(stage: str, error: Exception):
             },
         )
 
+
 def _write_progress_file(session_id: str, data: dict):
     """Atomically write progress JSON to a file (cross-process safe)."""
     path = _progress_file(session_id)
     tmp_path = path + ".tmp"
     try:
-        with open(tmp_path, 'w') as f:
+        with open(tmp_path, "w") as f:
             json.dump(data, f)
         os.replace(tmp_path, path)  # atomic on POSIX
     except Exception:
         pass
+
 
 # Monkey-patch tqdm to intercept progress
 import tqdm as _tqdm_module
 
 _original_tqdm = _tqdm_module.tqdm
 
+
 class _TqdmProgressInterceptor(_original_tqdm):
     """Wraps tqdm to push progress updates to SSE."""
+
     def __init__(self, *args, **kwargs):
-        self._stage_desc = kwargs.get('desc', 'Processing')
+        self._stage_desc = kwargs.get("desc", "Processing")
         super().__init__(*args, **kwargs)
-    
+
     def set_description(self, desc=None, refresh=True):
-        self._stage_desc = desc or 'Processing'
+        self._stage_desc = desc or "Processing"
         super().set_description(desc, refresh)
-    
+
     def update(self, n=1):
         super().update(n)
         _update_progress(self._stage_desc, self.n, self.total or 0)
+
 
 # Patch tqdm globally
 _tqdm_module.tqdm = _TqdmProgressInterceptor
@@ -615,12 +750,22 @@ def _build_camera_params(
             fov_deg = float(manual_fov)
         grid_point = torch.tensor([-1.0, 0.0, 0.0])
         distance = distance_from_fov(
-            camera_angle_x, grid_point,
-            torch.tensor([0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]),
-            WILD_MESH_SCALE, WILD_IMAGE_RESOLUTION,
+            camera_angle_x,
+            grid_point,
+            torch.tensor(
+                [0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]
+            ),
+            WILD_MESH_SCALE,
+            WILD_IMAGE_RESOLUTION,
         )["distance_from_x"]
-        print(f"[Camera] Using manual FOV: {fov_deg:.2f}° ({camera_angle_x:.4f} rad), distance: {distance:.4f}")
-        return {'camera_angle_x': camera_angle_x, 'distance': distance, 'mesh_scale': WILD_MESH_SCALE}
+        print(
+            f"[Camera] Using manual FOV: {fov_deg:.2f}° ({camera_angle_x:.4f} rad), distance: {distance:.4f}"
+        )
+        return {
+            "camera_angle_x": camera_angle_x,
+            "distance": distance,
+            "mesh_scale": WILD_MESH_SCALE,
+        }
 
     return get_camera_params_wild_moge(
         temp_processed_path,
@@ -673,7 +818,9 @@ def _generate_3d_impl(
 
     img = Image.open(image["path"])
     image_preprocessed = img
-    temp_processed_path = os.path.join(TMP_DIR, f"temp_proc_{session_id[:8]}_{int(time.time()*1000)}.png")
+    temp_processed_path = os.path.join(
+        TMP_DIR, f"temp_proc_{session_id[:8]}_{int(time.time() * 1000)}.png"
+    )
     image_preprocessed.save(temp_processed_path)
 
     camera_params = _build_camera_params(
@@ -729,14 +876,18 @@ def _generate_3d_impl(
     if render_preview:
         _update_progress("Rendering views", 0, 1)
         mesh.simplify(16777216)
-        cam_dist = camera_params['distance']
+        cam_dist = camera_params["distance"]
         near = max(0.01, cam_dist - 2.0)
         far = cam_dist + 10.0
         renders = render_utils.render_proj_aligned_video(
-            mesh, camera_angle_x=camera_params['camera_angle_x'],
-            distance=cam_dist, resolution=1024,
-            num_frames=STEPS, envmap=envmap,
-            near=near, far=far,
+            mesh,
+            camera_angle_x=camera_params["camera_angle_x"],
+            distance=cam_dist,
+            resolution=1024,
+            num_frames=STEPS,
+            envmap=envmap,
+            near=near,
+            far=far,
         )
         _update_progress("Rendering views", 1, 1)
 
@@ -744,28 +895,36 @@ def _generate_3d_impl(
         for mode_key, frames in renders.items():
             mode_files = []
             for i, frame in enumerate(frames):
-                p = os.path.abspath(os.path.join(TMP_DIR, f"render_{mode_key}_{i}_{int(time.time()*1000)}.jpg"))
+                p = os.path.abspath(
+                    os.path.join(
+                        TMP_DIR, f"render_{mode_key}_{i}_{int(time.time() * 1000)}.jpg"
+                    )
+                )
                 Image.fromarray(frame).save(p, quality=85)
                 mode_files.append(FileData(path=p))
             render_files[mode_key] = mode_files
 
-        result.update({
-            "render_paths": render_files,
-            "preview_available": True,
-            "extract_available": True,
-        })
+        result.update(
+            {
+                "render_paths": render_files,
+                "preview_available": True,
+                "extract_available": True,
+            }
+        )
     else:
         _update_progress("Exporting CPU fallback GLB", 0, 1)
         fallback_glb_path = export_basic_glb(mesh, session_id=session_id)
         _update_progress("Exporting CPU fallback GLB", 1, 1)
-        result.update({
-            "render_paths": {},
-            "preview_available": False,
-            "extract_available": False,
-            "fallback_mode": "cpu",
-            "fallback_glb_path": os.path.abspath(fallback_glb_path),
-            "fallback_message": "ZeroGPU quota exhausted. Generated a geometry-only CPU fallback asset.",
-        })
+        result.update(
+            {
+                "render_paths": {},
+                "preview_available": False,
+                "extract_available": False,
+                "fallback_mode": "cpu",
+                "fallback_glb_path": os.path.abspath(fallback_glb_path),
+                "fallback_message": "ZeroGPU quota exhausted. Generated a geometry-only CPU fallback asset.",
+            }
+        )
 
     _finish_progress()
     return result
@@ -802,22 +961,34 @@ def _extract_glb_impl(
         return FileData(path=out_glb)
 
     import o_voxel.postprocess as o_voxel_postprocess
+
     glb = o_voxel_postprocess.to_glb(
-        vertices=mesh.vertices, faces=mesh.faces, attr_volume=mesh.attrs,
-        coords=mesh.coords, attr_layout=pipeline.pbr_attr_layout,
-        grid_size=res, aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
-        decimation_target=decimation_target, texture_size=texture_size,
-        remesh=True, remesh_band=1, remesh_project=0, use_tqdm=True,
+        vertices=mesh.vertices,
+        faces=mesh.faces,
+        attr_volume=mesh.attrs,
+        coords=mesh.coords,
+        attr_layout=pipeline.pbr_attr_layout,
+        grid_size=res,
+        aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
+        decimation_target=decimation_target,
+        texture_size=texture_size,
+        remesh=True,
+        remesh_band=1,
+        remesh_project=0,
+        use_tqdm=True,
     )
-    rot = np.array([
-        [-1,  0,  0,  0],
-        [ 0,  0, -1,  0],
-        [ 0, -1,  0,  0],
-        [ 0,  0,  0,  1],
-    ], dtype=np.float64)
+    rot = np.array(
+        [
+            [-1, 0, 0, 0],
+            [0, 0, -1, 0],
+            [0, -1, 0, 0],
+            [0, 0, 0, 1],
+        ],
+        dtype=np.float64,
+    )
     glb.apply_transform(rot)
 
-    out_glb = os.path.join(TMP_DIR, f"result_{int(time.time()*1000)}.glb")
+    out_glb = os.path.join(TMP_DIR, f"result_{int(time.time() * 1000)}.glb")
     glb.export(out_glb, extension_webp=True)
     _finish_progress()
     return FileData(path=out_glb)
@@ -870,9 +1041,12 @@ def runtime_payload() -> dict[str, object]:
     payload["pipeline_resolved"] = resolved_pipeline_dir is not None
     return payload
 
+
 @app.get("/")
 async def homepage():
-    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index_bak.html")
+    html_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "index_bak.html"
+    )
     with open(html_path, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
@@ -892,17 +1066,20 @@ async def ready():
     status_code = 200 if payload["ready"] else 503
     return JSONResponse(payload, status_code=status_code)
 
+
 @app.get("/progress")
 async def progress_poll(request: Request):
     """Polling endpoint for real-time progress updates during generation."""
     session_id = request.query_params.get("session_id", "")
     path = _progress_file(session_id)
     try:
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             data = json.load(f)
         return JSONResponse(data)
     except (FileNotFoundError, json.JSONDecodeError):
-        return JSONResponse({"stage": "Waiting...", "step": 0, "total": 0, "done": False})
+        return JSONResponse(
+            {"stage": "Waiting...", "step": 0, "total": 0, "done": False}
+        )
 
 
 @app.get("/queue/join")
@@ -910,7 +1087,10 @@ async def queue_join(request: Request):
     session_id = request.query_params.get("session_id", "")
     if session_id:
         with _queue_lock:
-            if session_id not in _pending_sessions and session_id != _queue_running_session:
+            if (
+                session_id not in _pending_sessions
+                and session_id != _queue_running_session
+            ):
                 _pending_sessions.append(session_id)
                 _pending_times[session_id] = time.time()
     return JSONResponse({"ok": True})
@@ -921,7 +1101,11 @@ async def queue_status(request: Request):
     session_id = request.query_params.get("session_id", "")
     now = time.time()
     with _queue_lock:
-        stale = [s for s in _pending_sessions if now - _pending_times.get(s, now) > _PENDING_TIMEOUT]
+        stale = [
+            s
+            for s in _pending_sessions
+            if now - _pending_times.get(s, now) > _PENDING_TIMEOUT
+        ]
         for s in stale:
             _pending_sessions.remove(s)
             _pending_times.pop(s, None)
@@ -941,20 +1125,24 @@ async def queue_status(request: Request):
         position = -1
 
     total_ahead_for_unregistered = len(pending) + (1 if gpu_busy else 0)
-    return JSONResponse({
-        "position": position,
-        "total_waiting": len(pending),
-        "gpu_busy": gpu_busy,
-        "total_ahead_for_unregistered": total_ahead_for_unregistered,
-    })
+    return JSONResponse(
+        {
+            "position": position,
+            "total_waiting": len(pending),
+            "gpu_busy": gpu_busy,
+            "total_ahead_for_unregistered": total_ahead_for_unregistered,
+        }
+    )
+
 
 @app.api()
 def preprocess(image: FileData) -> FileData:
     img = Image.open(image["path"])
     processed = preprocess_image_for_ui(img)
-    out_path = os.path.join(TMP_DIR, f"preprocessed_{int(time.time()*1000)}.png")
+    out_path = os.path.join(TMP_DIR, f"preprocessed_{int(time.time() * 1000)}.png")
     processed.save(out_path)
     return FileData(path=out_path)
+
 
 @app.api()
 @spaces.GPU(duration=120)
@@ -973,11 +1161,12 @@ def warmup_runtime(session_id: str = "") -> Dict:
         _fail_progress(stage, exc)
         raise
 
+
 @app.api()
 @spaces.GPU(duration=generation_gpu_duration)
 def generate_3d(
-    image: FileData, 
-    seed: int, 
+    image: FileData,
+    seed: int,
     resolution: int,
     ss_guidance_strength: float = 7.5,
     ss_guidance_rescale: float = 0.7,
@@ -1070,7 +1259,9 @@ def generate_3d_cpu_fallback(
             return {
                 "error": True,
                 "fallback_mode": "cpu",
-                "message": build_cpu_fallback_error(RuntimeError("ZeroGPU quota exhausted"), cpu_exc),
+                "message": build_cpu_fallback_error(
+                    RuntimeError("ZeroGPU quota exhausted"), cpu_exc
+                ),
                 "render_paths": {},
                 "state_path": "",
                 "camera_angle_x": None,
@@ -1079,9 +1270,12 @@ def generate_3d_cpu_fallback(
                 "extract_available": False,
             }
 
+
 @app.api()
 @spaces.GPU(duration=extract_glb_gpu_duration)
-def extract_glb_api(state_path: str, decimation_target: int, texture_size: int, session_id: str = "") -> FileData:
+def extract_glb_api(
+    state_path: str, decimation_target: int, texture_size: int, session_id: str = ""
+) -> FileData:
     with acquire_inference(session_id):
         return _extract_glb_impl(
             state_path=state_path,
@@ -1093,7 +1287,9 @@ def extract_glb_api(state_path: str, decimation_target: int, texture_size: int, 
 
 
 @app.api()
-def extract_glb_api_cpu_fallback(state_path: str, decimation_target: int, texture_size: int, session_id: str = "") -> FileData:
+def extract_glb_api_cpu_fallback(
+    state_path: str, decimation_target: int, texture_size: int, session_id: str = ""
+) -> FileData:
     with acquire_inference(session_id):
         return _extract_glb_impl(
             state_path=state_path,
@@ -1102,6 +1298,7 @@ def extract_glb_api_cpu_fallback(state_path: str, decimation_target: int, textur
             session_id=session_id,
             execution_device="cpu",
         )
+
 
 # Mount assets and tmp for direct access
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
