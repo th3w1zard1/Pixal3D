@@ -11,7 +11,10 @@ def _load_utils3d_torch_helper(name: str, module_name: str):
 
     module = getattr(utils3d.torch, module_name, None)
     if module is None:
-        module = importlib.import_module(f"utils3d.torch.{module_name}")
+        try:
+            module = importlib.import_module(f"utils3d.torch.{module_name}")
+        except ModuleNotFoundError:
+            return None
 
     helper = getattr(module, name, None)
     if callable(helper):
