@@ -10,6 +10,29 @@ from ..representations import Mesh, Voxel, MeshWithPbrMaterial, MeshWithVoxel
 from .random_utils import sphere_hammersley_sequence
 
 
+def intrinsics_from_fov_xy_compat(fov_x, fov_y):
+    helper = getattr(utils3d.torch, "intrinsics_from_fov_xy", None)
+    if callable(helper):
+        return helper(fov_x, fov_y)
+
+    transforms = getattr(utils3d.torch, "transforms", None)
+    helper = getattr(transforms, "intrinsics_from_fov_xy", None) if transforms is not None else None
+    if callable(helper):
+        return helper(fov_x, fov_y)
+
+    helper = getattr(utils3d.torch, "intrinsics_from_fov", None)
+    if callable(helper):
+        return helper(fov_x=fov_x, fov_y=fov_y)
+
+    helper = getattr(transforms, "intrinsics_from_fov", None) if transforms is not None else None
+    if callable(helper):
+        return helper(fov_x=fov_x, fov_y=fov_y)
+
+    raise AttributeError(
+        "utils3d.torch is missing both intrinsics_from_fov_xy and intrinsics_from_fov"
+    )
+
+
 def yaw_pitch_r_fov_to_extrinsics_intrinsics(yaws, pitchs, rs, fovs):
     is_list = isinstance(yaws, list)
     if not is_list:
@@ -31,7 +54,7 @@ def yaw_pitch_r_fov_to_extrinsics_intrinsics(yaws, pitchs, rs, fovs):
             torch.sin(pitch),
         ]).cuda() * r
         extr = utils3d.torch.extrinsics_look_at(orig, torch.tensor([0, 0, 0]).float().cuda(), torch.tensor([0, 0, 1]).float().cuda())
-        intr = utils3d.torch.intrinsics_from_fov_xy(fov, fov)
+        intr = intrinsics_from_fov_xy_compat(fov, fov)
         extrinsics.append(extr)
         intrinsics.append(intr)
     if not is_list:
@@ -145,7 +168,7 @@ def proj_camera_to_render_params(camera_angle_x, distance):
     extrinsics = utils3d.torch.extrinsics_look_at(orig, target, up)
     
     fov_tensor = torch.tensor(camera_angle_x, dtype=torch.float32).cuda()
-    intrinsics = utils3d.torch.intrinsics_from_fov_xy(fov_tensor, fov_tensor)
+    intrinsics = intrinsics_from_fov_xy_compat(fov_tensor, fov_tensor)
     
     return extrinsics, intrinsics
 
