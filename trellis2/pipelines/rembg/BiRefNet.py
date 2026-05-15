@@ -1,20 +1,56 @@
-from typing import *
+from __future__ import annotations
+
 import os
-from transformers import AutoModelForImageSegmentation
+from typing import Any
+
 import torch
-from torchvision import transforms
-from PIL import Image
 from huggingface_hub.utils import HfHubHTTPError
+from PIL import Image
+from torchvision import transforms
+from transformers import AutoModelForImageSegmentation
+
+from space_bootstrap import (
+    RuntimeConfig,
+    build_hf_hub_kwargs,
+    build_runtime_config,
+    candidate_rembg_models,
+    is_gated_model_reference,
+)
 
 
 class BiRefNet:
-    def __init__(self, model_name: str = "ZhengPeng7/BiRefNet"):
-        # Try configured model first, then high-quality public fallbacks.
-        fallback_models = [
-            model_name,
-            "ZhengPeng7/BiRefNet",
-            "briaai/RMBG-1.4",
-        ]
+    def __init__(
+        self,
+        model_name: str = "ZhengPeng7/BiRefNet",
+        fallback_model_names: list[str] | tuple[str, ...] | None = None,
+        trust_remote_code: bool | None = None,
+    ):
+        runtime_config = build_runtime_config()
+        primary_model = (
+            runtime_config.rembg_model
+            if is_gated_model_reference(model_name)
+            else model_name
+        )
+        fallback_models = (
+            tuple(fallback_model_names)
+            if fallback_model_names is not None
+            else runtime_config.rembg_fallback_models
+        )
+        candidate_config = RuntimeConfig(
+            hf_token=runtime_config.hf_token,
+            hf_cache_dir=runtime_config.hf_cache_dir,
+            pipeline_revision=runtime_config.pipeline_revision,
+            rembg_model=primary_model,
+            rembg_fallback_models=fallback_models,
+            rembg_trust_remote_code=runtime_config.rembg_trust_remote_code,
+            warmup_on_start=runtime_config.warmup_on_start,
+        )
+        trust_remote_code = (
+            runtime_config.rembg_trust_remote_code
+            if trust_remote_code is None
+            else trust_remote_code
+        )
+        hub_kwargs = build_hf_hub_kwargs(runtime_config, include_revision=False)
         tried: list[tuple[str, str]] = []
         self.model: Any = None
         self.loaded_model_name = None
@@ -23,12 +59,12 @@ class BiRefNet:
             "HUGGING_FACE_HUB_TOKEN"
         )
 
-        for candidate in dict.fromkeys(fallback_models):
+        for candidate in candidate_rembg_models(candidate_config):
             try:
                 self.model = AutoModelForImageSegmentation.from_pretrained(
                     candidate,
-                    trust_remote_code=True,
-                    token=hf_token,
+                    trust_remote_code=trust_remote_code,
+                    **hub_kwargs,
                 )
                 self.loaded_model_name = candidate
                 if candidate != model_name:

@@ -1,4 +1,5 @@
 import importlib
+from space_bootstrap import build_hf_hub_kwargs, build_runtime_config
 
 __attributes = {
     # Sparse Structure
@@ -57,8 +58,10 @@ def from_pretrained(path: str, **kwargs):
         path_parts = path.split('/')
         repo_id = f'{path_parts[0]}/{path_parts[1]}'
         model_name = '/'.join(path_parts[2:])
-        config_file = hf_hub_download(repo_id, f"{model_name}.json")
-        model_file = hf_hub_download(repo_id, f"{model_name}.safetensors")
+        runtime_config = build_runtime_config()
+        hub_kwargs = build_hf_hub_kwargs(runtime_config)
+        config_file = hf_hub_download(repo_id, f"{model_name}.json", **hub_kwargs)
+        model_file = hf_hub_download(repo_id, f"{model_name}.safetensors", **hub_kwargs)
 
     with open(config_file, 'r') as f:
         config = json.load(f)
