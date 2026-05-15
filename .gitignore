@@ -18,3 +18,4 @@ results*/
 ckpts*/
 tmp/example.py
 tmp/
+autotune_cache.json
