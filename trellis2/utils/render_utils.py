@@ -8,29 +8,7 @@ from PIL import Image
 from ..renderers import MeshRenderer, VoxelRenderer, PbrMeshRenderer
 from ..representations import Mesh, Voxel, MeshWithPbrMaterial, MeshWithVoxel
 from .random_utils import sphere_hammersley_sequence
-
-
-def intrinsics_from_fov_xy_compat(fov_x, fov_y):
-    helper = getattr(utils3d.torch, "intrinsics_from_fov_xy", None)
-    if callable(helper):
-        return helper(fov_x, fov_y)
-
-    transforms = getattr(utils3d.torch, "transforms", None)
-    helper = getattr(transforms, "intrinsics_from_fov_xy", None) if transforms is not None else None
-    if callable(helper):
-        return helper(fov_x, fov_y)
-
-    helper = getattr(utils3d.torch, "intrinsics_from_fov", None)
-    if callable(helper):
-        return helper(fov_x=fov_x, fov_y=fov_y)
-
-    helper = getattr(transforms, "intrinsics_from_fov", None) if transforms is not None else None
-    if callable(helper):
-        return helper(fov_x=fov_x, fov_y=fov_y)
-
-    raise AttributeError(
-        "utils3d.torch is missing both intrinsics_from_fov_xy and intrinsics_from_fov"
-    )
+from .utils3d_compat import intrinsics_from_fov_xy_compat
 
 
 def yaw_pitch_r_fov_to_extrinsics_intrinsics(yaws, pitchs, rs, fovs):

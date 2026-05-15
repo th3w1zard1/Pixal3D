@@ -4,6 +4,7 @@ from easydict import EasyDict as edict
 import numpy as np
 import utils3d
 from ..representations.mesh import Mesh, MeshWithVoxel, MeshWithPbrMaterial, TextureFilterMode, AlphaMode, TextureWrapMode
+from ..utils.utils3d_compat import get_image_rays_compat
 import torch.nn.functional as F
 
 
@@ -294,7 +295,7 @@ class PbrMeshRenderer:
                 out_dict[shaded_key] = torch.zeros((3, resolution, resolution), dtype=torch.float32, device=self.device)
             return out_dict
             
-        rays_o, rays_d = utils3d.torch.get_image_rays(
+        rays_o, rays_d = get_image_rays_compat(
             extrinsics, intrinsics, resolution * ssaa, resolution * ssaa
         )
         
