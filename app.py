@@ -487,7 +487,9 @@ def extract_glb_gpu_duration(
     texture_size: int,
     session_id: str = "",
 ) -> int:
-    return 240
+    # Extraction is substantially lighter than synthesis, so keep the
+    # request small enough to fit after a full 1024 generation pass.
+    return 30
 
 # ============================================================================
 # API Implementation
