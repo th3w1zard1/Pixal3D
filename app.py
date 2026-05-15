@@ -476,10 +476,9 @@ def generation_gpu_duration(
     fov_unit: str = "deg",
     session_id: str = "",
 ) -> int:
-    try:
-        return 300 if int(resolution) <= 1024 else 480
-    except (TypeError, ValueError):
-        return 480
+    # Hosted ZeroGPU currently rejects requests above 240s outright,
+    # so clamp both quality tiers to that hard cap.
+    return 240
 
 
 def extract_glb_gpu_duration(
@@ -488,10 +487,7 @@ def extract_glb_gpu_duration(
     texture_size: int,
     session_id: str = "",
 ) -> int:
-    try:
-        return 240 if int(texture_size) <= 1024 else 360
-    except (TypeError, ValueError):
-        return 360
+    return 240
 
 # ============================================================================
 # API Implementation
