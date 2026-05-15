@@ -8,6 +8,7 @@ from PIL import Image
 from ..renderers import MeshRenderer, VoxelRenderer, PbrMeshRenderer
 from ..representations import Mesh, Voxel, MeshWithPbrMaterial, MeshWithVoxel
 from .random_utils import sphere_hammersley_sequence
+from .utils3d_compat import intrinsics_from_fov_xy_compat
 
 
 def yaw_pitch_r_fov_to_extrinsics_intrinsics(yaws, pitchs, rs, fovs):
@@ -31,7 +32,7 @@ def yaw_pitch_r_fov_to_extrinsics_intrinsics(yaws, pitchs, rs, fovs):
             torch.sin(pitch),
         ]).cuda() * r
         extr = utils3d.torch.extrinsics_look_at(orig, torch.tensor([0, 0, 0]).float().cuda(), torch.tensor([0, 0, 1]).float().cuda())
-        intr = utils3d.torch.intrinsics_from_fov_xy(fov, fov)
+        intr = intrinsics_from_fov_xy_compat(fov, fov)
         extrinsics.append(extr)
         intrinsics.append(intr)
     if not is_list:
@@ -145,7 +146,7 @@ def proj_camera_to_render_params(camera_angle_x, distance):
     extrinsics = utils3d.torch.extrinsics_look_at(orig, target, up)
     
     fov_tensor = torch.tensor(camera_angle_x, dtype=torch.float32).cuda()
-    intrinsics = utils3d.torch.intrinsics_from_fov_xy(fov_tensor, fov_tensor)
+    intrinsics = intrinsics_from_fov_xy_compat(fov_tensor, fov_tensor)
     
     return extrinsics, intrinsics
 

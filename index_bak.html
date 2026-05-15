@@ -275,6 +275,68 @@
             gap: 0.5rem;
         }
 
+        .runtime-card {
+            background: linear-gradient(180deg, rgba(129, 140, 248, 0.12), rgba(15, 23, 42, 0.35));
+            border: 1px solid rgba(129, 140, 248, 0.22);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .runtime-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .runtime-card-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .runtime-badge {
+            border-radius: 999px;
+            padding: 0.25rem 0.6rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            border: 1px solid transparent;
+        }
+
+        .runtime-badge[data-state="pending"] {
+            background: rgba(148, 163, 184, 0.12);
+            color: #cbd5e1;
+            border-color: rgba(148, 163, 184, 0.2);
+        }
+
+        .runtime-badge[data-state="initializing"] {
+            background: rgba(129, 140, 248, 0.12);
+            color: #c7d2fe;
+            border-color: rgba(129, 140, 248, 0.35);
+        }
+
+        .runtime-badge[data-state="ready"] {
+            background: rgba(16, 185, 129, 0.12);
+            color: #a7f3d0;
+            border-color: rgba(16, 185, 129, 0.35);
+        }
+
+        .runtime-badge[data-state="error"] {
+            background: rgba(248, 113, 113, 0.12);
+            color: #fecaca;
+            border-color: rgba(248, 113, 113, 0.35);
+        }
+
+        .runtime-card p {
+            font-size: 0.76rem;
+            color: var(--text-dim);
+            line-height: 1.55;
+        }
+
         .control-group {
             display: flex;
             flex-direction: column;
@@ -383,6 +445,28 @@
 
         .btn-outline:hover {
             background: var(--border);
+        }
+
+        .btn-glow {
+            border-color: rgba(16, 185, 129, 0.45);
+            color: #d1fae5;
+            box-shadow: 0 0 0 rgba(16, 185, 129, 0.35);
+            animation: glowPulse 2.2s ease-in-out infinite;
+        }
+
+        @keyframes glowPulse {
+            0%, 100% {
+                box-shadow: 0 0 0 rgba(16, 185, 129, 0.12), 0 0 0 rgba(16, 185, 129, 0);
+            }
+            50% {
+                box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.18), 0 0 24px rgba(16, 185, 129, 0.2);
+            }
+        }
+
+        .helper-copy {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            line-height: 1.5;
         }
 
         /* Mode Buttons */
@@ -627,6 +711,13 @@
                     2. Click Extract GLB to export.<br>
                     3. Download the generated GLB file.
                 </p>
+                <div class="runtime-card">
+                    <div class="runtime-card-header">
+                        <span class="runtime-card-title">Runtime Status</span>
+                        <span class="runtime-badge" id="runtime-status-badge" data-state="pending">Cold</span>
+                    </div>
+                    <p id="runtime-status-text">The hosted runtime is cold. Your first generation may spend time priming the model stack.</p>
+                </div>
                 <a href="https://ldyang694.github.io/projects/pixal3d/" target="_blank" class="btn btn-outline" style="margin-top: 1rem; padding: 0.6rem 1rem; font-size: 0.85rem;">
                     <i data-lucide="globe" style="width: 16px;"></i>
                     Project Page
@@ -649,8 +740,8 @@
                     <div class="input-wrapper">
                         <label>Target Resolution</label>
                         <select id="resolution">
-                            <option value="1024">1024 (Balanced)</option>
-                            <option value="1536" selected>1536 (High Quality)</option>
+                            <option value="1024" selected>1024 (Balanced, Recommended)</option>
+                            <option value="1536">1536 (High Quality, Slower)</option>
                         </select>
                     </div>
                     <div class="input-wrapper">
@@ -698,6 +789,23 @@
                 </div>
             </div>
 
+            <div class="sidebar-section" id="export-controls" style="display: none;">
+                <h3><i data-lucide="package-check" style="width: 14px;"></i> Export Profile</h3>
+                <div class="control-group">
+                    <div class="input-wrapper">
+                        <label>GLB Texture Budget</label>
+                        <select id="export-profile">
+                            <option value="fast">Fast Preview GLB (1K)</option>
+                            <option value="balanced" selected>Balanced GLB (2K)</option>
+                            <option value="detail">High Detail GLB (4K)</option>
+                        </select>
+                        <p class="helper-copy" id="export-profile-hint">
+                            Balanced is the safest hosted default. Switch to High Detail only when the runtime is warm and quota is healthy.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             <div class="sidebar-section">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; cursor: pointer;" onclick="toggleAdvanced()">
                     <h3 style="margin-bottom: 0;"><i data-lucide="shield-alert" style="width: 14px;"></i> Advanced Engine</h3>
@@ -719,8 +827,8 @@
                         </div>
                         <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0;">
                         <div class="input-wrapper">
-                            <label>Decimation <span><span id="decim_val">1M</span></span></label>
-                            <input type="range" id="decimation" min="100000" max="1000000" step="10000" value="1000000" oninput="updateVal('decimation')">
+                            <label>Decimation <span><span id="decim_val">0.6M</span></span></label>
+                            <input type="range" id="decimation" min="100000" max="1000000" step="10000" value="600000" oninput="updateVal('decimation')">
                         </div>
                     </div>
                 </div>
@@ -731,9 +839,9 @@
                     <i data-lucide="zap"></i>
                     Start Generation
                 </button>
-                <button class="btn btn-outline" id="extract-btn" style="display: none;">
+                <button class="btn btn-outline btn-glow" id="extract-btn" style="display: none;">
                     <i data-lucide="box"></i>
-                    Extract Mesh (GLB)
+                    Export GLB
                 </button>
                 <button class="btn btn-outline" id="download-btn" style="display: none; background: rgba(16, 185, 129, 0.1); border-color: var(--accent); color: var(--accent);">
                     <i data-lucide="download"></i>
@@ -864,11 +972,13 @@
         let currentFile = null;
         let preprocessedFile = null;
         let isPreprocessing = false;
+        let runtimePrimed = false;
         let generationResult = null;
         let currentMode = "shaded_forest";
         let currentFrame = 0;
         const sessionId = crypto.randomUUID();
         let currentStep = 1;
+        let runtimeStatusInterval = null;
 
         const MODES = [
             { name: "Normal", key: "normal" },
@@ -878,6 +988,23 @@
             { name: "Sunset", key: "shaded_sunset" },
             { name: "Blue", key: "shaded_courtyard" }
         ];
+        const EXPORT_PROFILES = {
+            fast: {
+                label: "Fast Preview GLB",
+                textureSize: 1024,
+                hint: "Fastest export and lowest quota cost. Best for proofing or quick handoff."
+            },
+            balanced: {
+                label: "Balanced GLB",
+                textureSize: 2048,
+                hint: "Recommended hosted default: noticeably sharper textures without the full 4K export cost."
+            },
+            detail: {
+                label: "High Detail GLB",
+                textureSize: 4096,
+                hint: "Maximum texture fidelity. Use when the runtime is already warm and you have quota headroom."
+            }
+        };
 
         async function init() {
             lucide.createIcons();
@@ -885,6 +1012,8 @@
                 client = await Client.connect(window.location.origin);
                 setupUI();
                 loadSamples();
+                await refreshRuntimeStatus();
+                runtimeStatusInterval = setInterval(refreshRuntimeStatus, 15000);
             } catch (err) {
                 console.error("Connection error:", err);
                 showToast("Connection failed. Try refreshing.");
@@ -913,12 +1042,16 @@
                 link.download = "pixal3d_export.glb";
                 link.click();
             };
+            document.getElementById('export-profile').onchange = updateExportProfileHint;
+            updateExportProfileHint();
 
             // Clear button
             document.getElementById('clear-btn').onclick = () => {
                 // Reset state
                 currentFile = null;
+                preprocessedFile = null;
                 generationResult = null;
+                runtimePrimed = false;
                 currentFrame = 0;
                 currentMode = "shaded_forest";
 
@@ -952,6 +1085,7 @@
 
                 // Go back to step 1
                 setStep(1);
+                refreshRuntimeStatus();
                 showToast("Cleared. Ready for new upload.");
             };
 
@@ -1045,9 +1179,85 @@
                 }
             } catch (err) {
                 console.error("Preprocess failed:", err);
+                showToast(formatApiError(err, "Background removal failed. Continuing with the original upload."), 5200);
             }
             isPreprocessing = false;
             document.getElementById('generate-btn').disabled = false;
+        }
+
+        async function refreshRuntimeStatus() {
+            try {
+                const resp = await fetch('/health', { cache: 'no-store' });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const badge = document.getElementById('runtime-status-badge');
+                const text = document.getElementById('runtime-status-text');
+                const state = data.state || (data.ready ? 'ready' : 'pending');
+                const stateLabel = {
+                    pending: 'Cold',
+                    initializing: 'Warming',
+                    ready: 'Ready',
+                    error: 'Error'
+                }[state] || 'Live';
+
+                badge.dataset.state = state;
+                badge.textContent = stateLabel;
+                text.textContent = data.ready
+                    ? 'Runtime is hot. Generation should start immediately unless the hosted queue is saturated.'
+                    : (data.message || 'The hosted runtime is cold. Generate will prime the model stack automatically.');
+                runtimePrimed = !!data.ready;
+            } catch (err) {
+                console.debug('Runtime status probe failed:', err);
+            }
+        }
+
+        function updateExportProfileHint() {
+            const profile = getExportProfile();
+            document.getElementById('export-profile-hint').textContent = profile.hint;
+        }
+
+        function getExportProfile() {
+            const value = document.getElementById('export-profile').value;
+            return EXPORT_PROFILES[value] || EXPORT_PROFILES.balanced;
+        }
+
+        function formatApiError(err, fallback) {
+            const parts = [];
+            const visit = (value) => {
+                if (!value) return;
+                if (typeof value === 'string') {
+                    const trimmed = value.trim();
+                    if (trimmed) parts.push(trimmed);
+                    return;
+                }
+                if (typeof value !== 'object') return;
+                ['title', 'message', 'original_msg', 'error'].forEach((key) => {
+                    if (typeof value[key] === 'string' && value[key].trim()) {
+                        parts.push(value[key].trim());
+                    }
+                });
+                if (value.cause) visit(value.cause);
+            };
+            visit(err);
+            const unique = [...new Set(parts)];
+            if (!unique.length) return fallback;
+            const combined = unique.join(': ');
+            return combined.length > 260 ? combined.slice(0, 257) + '...' : combined;
+        }
+
+        async function ensureRuntimePrimed() {
+            if (runtimePrimed) return;
+
+            startProgressListener();
+            try {
+                await client.predict("/warmup_runtime", { session_id: sessionId });
+                runtimePrimed = true;
+                stopProgressListener();
+                await refreshRuntimeStatus();
+            } catch (err) {
+                stopProgressListener();
+                throw err;
+            }
         }
 
         function setStep(num) {
@@ -1063,6 +1273,7 @@
 
             // Toggle side controls based on step
             document.getElementById('render-controls').style.display = (num >= 2) ? 'block' : 'none';
+            document.getElementById('export-controls').style.display = (num >= 2) ? 'block' : 'none';
             document.getElementById('extract-btn').style.display = (num === 2) ? 'flex' : 'none';
             document.getElementById('download-btn').style.display = (num === 3) ? 'flex' : 'none';
         }
@@ -1083,8 +1294,9 @@
             setStep(1);
 
             showLoading();
-            startProgressListener();
             try {
+                await ensureRuntimePrimed();
+                startProgressListener();
                 const params = {
                     image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
                     seed: parseInt(document.getElementById('seed').value),
@@ -1114,13 +1326,15 @@
                 }
 
                 setStep(2);
+                await refreshRuntimeStatus();
                 hideLoading();
                 showToast("Generation complete!");
             } catch (err) {
                 console.error(err);
                 stopProgressListener();
                 hideLoading();
-                showToast("An error occurred during synthesis.");
+                await refreshRuntimeStatus();
+                showToast(formatApiError(err, "Generation failed. Try a lower-cost profile or wait for quota to recover."), 6500);
             }
         }
 
@@ -1254,10 +1468,11 @@
             showLoading();
             startProgressListener();
             try {
+                const exportProfile = getExportProfile();
                 const params = {
                     state_path: generationResult.state_path,
                     decimation_target: parseInt(document.getElementById('decimation').value),
-                    texture_size: 4096,
+                    texture_size: exportProfile.textureSize,
                     session_id: sessionId
                 };
 
@@ -1290,14 +1505,16 @@
 
                 viewer.style.visibility = 'visible';
                 setStep(3);
+                await refreshRuntimeStatus();
                 hideLoading();
-                showToast("3D Asset ready!");
+                showToast(`${exportProfile.label} ready!`, 4500);
             } catch (err) {
                 console.error(err);
                 stopProgressListener();
                 viewer.style.visibility = 'visible';
                 hideLoading();
-                showToast("Extraction failed.");
+                await refreshRuntimeStatus();
+                showToast(formatApiError(err, "Export failed. Try the Fast Preview GLB profile first."), 6500);
             }
         }
 
@@ -1408,11 +1625,11 @@
             document.getElementById('progress-bar-fill').style.width = '0%';
         }
 
-        function showToast(msg) {
+        function showToast(msg, timeoutMs = 3200) {
             const t = document.getElementById('toast');
             t.textContent = msg;
             t.style.display = 'block';
-            setTimeout(() => t.style.display = 'none', 3000);
+            setTimeout(() => t.style.display = 'none', timeoutMs);
         }
 
         // Gallery slider & scroll sync with auto-scroll

@@ -822,28 +822,75 @@ def _extract_glb_impl(
     _finish_progress()
     return FileData(path=out_glb)
 
+
+def generation_gpu_duration(
+    image: FileData,
+    seed: int,
+    resolution: int,
+    ss_guidance_strength: float = 7.5,
+    ss_guidance_rescale: float = 0.7,
+    ss_sampling_steps: int = 12,
+    ss_rescale_t: float = 5.0,
+    shape_slat_guidance_strength: float = 7.5,
+    shape_slat_guidance_rescale: float = 0.5,
+    shape_slat_sampling_steps: int = 12,
+    shape_slat_rescale_t: float = 3.0,
+    tex_slat_guidance_strength: float = 1.0,
+    tex_slat_guidance_rescale: float = 0.0,
+    tex_slat_sampling_steps: int = 12,
+    tex_slat_rescale_t: float = 3.0,
+    manual_fov: float = -1.0,
+    fov_unit: str = "deg",
+    session_id: str = "",
+) -> int:
+    # Keep synthesis inside a small post-warmup ZeroGPU slice; cold model
+    # initialization is handled separately by `warmup_runtime`.
+    return 60
+
+
+def extract_glb_gpu_duration(
+    state_path: str,
+    decimation_target: int,
+    texture_size: int,
+    session_id: str = "",
+) -> int:
+    return 30
+
+
 # ============================================================================
 # API Implementation
 # ============================================================================
 
 app = Server()
 
+
+def runtime_payload() -> dict[str, object]:
+    payload = runtime_state.snapshot()
+    payload["warmup_on_start"] = runtime_config.warmup_on_start
+    payload["pipeline_resolved"] = resolved_pipeline_dir is not None
+    return payload
+
 @app.get("/")
 async def homepage():
-    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index_bak.html")
     with open(html_path, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 
 @app.get("/health")
 async def health():
-    payload = runtime_state.snapshot()
-    payload["warmup_on_start"] = runtime_config.warmup_on_start
-    payload["pipeline_resolved"] = resolved_pipeline_dir is not None
+    payload = runtime_payload()
     payload["current_runtime_device"] = current_runtime_device
     payload["cpu_fallback_mode"] = "experimental"
     payload["cpu_fallback_available"] = True
     return JSONResponse(payload)
+
+
+@app.get("/ready")
+async def ready():
+    payload = runtime_payload()
+    status_code = 200 if payload["ready"] else 503
+    return JSONResponse(payload, status_code=status_code)
 
 @app.get("/progress")
 async def progress_poll(request: Request):
@@ -911,6 +958,23 @@ def preprocess(image: FileData) -> FileData:
 
 @app.api()
 @spaces.GPU(duration=120)
+def warmup_runtime(session_id: str = "") -> Dict:
+    _reset_progress(session_id)
+    stage = "Preparing runtime"
+    try:
+        _update_progress(stage, 0, 2)
+        ensure_runtime_ready()
+        stage = "Installing progress hooks"
+        _update_progress(stage, 1, 2)
+        install_progress_hooks()
+        _finish_progress()
+        return runtime_state.snapshot()
+    except Exception as exc:
+        _fail_progress(stage, exc)
+        raise
+
+@app.api()
+@spaces.GPU(duration=generation_gpu_duration)
 def generate_3d(
     image: FileData, 
     seed: int, 
@@ -1016,7 +1080,7 @@ def generate_3d_cpu_fallback(
             }
 
 @app.api()
-@spaces.GPU(duration=240)
+@spaces.GPU(duration=extract_glb_gpu_duration)
 def extract_glb_api(state_path: str, decimation_target: int, texture_size: int, session_id: str = "") -> FileData:
     with acquire_inference(session_id):
         return _extract_glb_impl(
