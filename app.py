@@ -53,12 +53,6 @@ from space_runtime import (
     start_background_initialization,
 )
 
-from trellis2.modules.sparse import SparseTensor
-from trellis2.pipelines import Pixal3DImageTo3DPipeline
-from trellis2.renderers import EnvMap
-from trellis2.utils import render_utils
-import o_voxel
-
 # ============================================================================
 # Constants & Defaults
 # ============================================================================
@@ -183,6 +177,8 @@ def init_models():
     with init_lock:
         if pipeline is not None:
             return
+        from trellis2.pipelines import Pixal3DImageTo3DPipeline
+        from trellis2.renderers import EnvMap
 
         # GPU / CUDA Diagnostics (runs when GPU is allocated)
         import subprocess as _sp
@@ -296,6 +292,8 @@ def pack_state(shape_slat, tex_slat, res):
     return state_path
 
 def unpack_state(state_path):
+    from trellis2.modules.sparse import SparseTensor
+
     data = np.load(state_path)
     shape_slat = SparseTensor(
         feats=torch.from_numpy(data['shape_slat_feats']).cuda(),
@@ -366,13 +364,22 @@ class _TqdmProgressInterceptor(_original_tqdm):
 
 # Patch tqdm globally
 _tqdm_module.tqdm = _TqdmProgressInterceptor
-# Also patch the direct import in the sampler module and render_utils
-import trellis2.pipelines.samplers.flow_euler as _fe_module
-_fe_module.tqdm = _TqdmProgressInterceptor
-import trellis2.utils.render_utils as _ru_module
-_ru_module.tqdm = _TqdmProgressInterceptor
-import o_voxel.postprocess as _ovp_module
-_ovp_module.tqdm = _TqdmProgressInterceptor
+
+_progress_hooks_installed = False
+
+
+def install_progress_hooks():
+    global _progress_hooks_installed
+    if _progress_hooks_installed:
+        return
+    import trellis2.pipelines.samplers.flow_euler as _fe_module
+    import trellis2.utils.render_utils as _ru_module
+    import o_voxel.postprocess as _ovp_module
+
+    _fe_module.tqdm = _TqdmProgressInterceptor
+    _ru_module.tqdm = _TqdmProgressInterceptor
+    _ovp_module.tqdm = _TqdmProgressInterceptor
+    _progress_hooks_installed = True
 
 # ============================================================================
 # API Implementation
@@ -439,6 +446,8 @@ def generate_3d(
     session_id: str = "",
 ) -> Dict:
     ensure_runtime_ready()
+    install_progress_hooks()
+    from trellis2.utils import render_utils
     _reset_progress(session_id)
     _update_progress("Preprocessing & Camera Estimation", 0, 1)
     
@@ -534,6 +543,8 @@ def generate_3d(
 @spaces.GPU(duration=240)
 def extract_glb_api(state_path: str, decimation_target: int, texture_size: int, session_id: str = "") -> FileData:
     ensure_runtime_ready()
+    install_progress_hooks()
+    import o_voxel.postprocess as o_voxel_postprocess
     _reset_progress(session_id)
     _update_progress("Decoding latent", 0, 1)
     
@@ -541,7 +552,7 @@ def extract_glb_api(state_path: str, decimation_target: int, texture_size: int, 
     mesh = pipeline.decode_latent(shape_slat, tex_slat, res)[0]
     _update_progress("Decoding latent", 1, 1)
     
-    glb = o_voxel.postprocess.to_glb(
+    glb = o_voxel_postprocess.to_glb(
         vertices=mesh.vertices, faces=mesh.faces, attr_volume=mesh.attrs,
         coords=mesh.coords, attr_layout=pipeline.pbr_attr_layout,
         grid_size=res, aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
