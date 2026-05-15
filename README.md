@@ -17,6 +17,7 @@ short_description: "High-fidelity pixel-aligned image-to-3D generation."
 - Default background-removal model: `ZhengPeng7/BiRefNet`
 - Default fallback model: `ZhengPeng7/BiRefNet_lite`
 - Health endpoint: `/health`
+- Readiness endpoint: `/ready` returns `200` only after the GPU runtime is actually primed
 
 ## Optional environment variables
 

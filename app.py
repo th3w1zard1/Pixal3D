@@ -495,6 +495,13 @@ def extract_glb_gpu_duration(
 
 app = Server()
 
+
+def runtime_payload() -> dict[str, object]:
+    payload = runtime_state.snapshot()
+    payload["warmup_on_start"] = runtime_config.warmup_on_start
+    payload["pipeline_resolved"] = resolved_pipeline_dir is not None
+    return payload
+
 @app.get("/")
 async def homepage():
     html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index_bak.html")
@@ -504,10 +511,14 @@ async def homepage():
 
 @app.get("/health")
 async def health():
-    payload = runtime_state.snapshot()
-    payload["warmup_on_start"] = runtime_config.warmup_on_start
-    payload["pipeline_resolved"] = resolved_pipeline_dir is not None
-    return JSONResponse(payload)
+    return JSONResponse(runtime_payload())
+
+
+@app.get("/ready")
+async def ready():
+    payload = runtime_payload()
+    status_code = 200 if payload["ready"] else 503
+    return JSONResponse(payload, status_code=status_code)
 
 @app.get("/progress")
 async def progress_poll(request: Request):
