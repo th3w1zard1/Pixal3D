@@ -35,6 +35,8 @@ def build_runtime_config(env: dict[str, str] | None = None) -> RuntimeConfig:
         for value in env.get("PIXAL3D_REMBG_FALLBACKS", "").split(",")
         if value.strip()
     )
+    warmup_default = not bool(env.get("SPACE_ID"))
+    warmup_override = env.get("PIXAL3D_WARMUP_ON_START")
 
     return RuntimeConfig(
         hf_token=env.get("HF_TOKEN") or None,
@@ -45,7 +47,7 @@ def build_runtime_config(env: dict[str, str] | None = None) -> RuntimeConfig:
         rembg_trust_remote_code=_as_bool(
             env.get("PIXAL3D_REMBG_TRUST_REMOTE_CODE"), True
         ),
-        warmup_on_start=_as_bool(env.get("PIXAL3D_WARMUP_ON_START"), True),
+        warmup_on_start=_as_bool(warmup_override, warmup_default),
     )
 
 

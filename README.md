@@ -22,7 +22,7 @@ short_description: "High-fidelity pixel-aligned image-to-3D generation."
 
 - `PIXAL3D_REMBG_MODEL` to override the primary background-removal model
 - `PIXAL3D_REMBG_FALLBACKS` as a comma-separated fallback list
-- `PIXAL3D_WARMUP_ON_START=0` to disable background warmup
+- Hosted Spaces default to lazy GPU initialization; set `PIXAL3D_WARMUP_ON_START=1` only if you explicitly want startup warmup
 - `GRADIO_SHARE=1` to enable Gradio share links outside the hosted Space runtime
 - `HF_TOKEN` only if you intentionally need authenticated Hugging Face Hub access for other assets
 

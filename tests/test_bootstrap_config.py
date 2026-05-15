@@ -3,6 +3,25 @@ from unittest import mock
 
 
 class RuntimeConfigTests(unittest.TestCase):
+    def test_build_runtime_config_disables_warmup_by_default_on_space(self):
+        from space_bootstrap import build_runtime_config
+
+        config = build_runtime_config({"SPACE_ID": "th3w1zard1/Pixal3D"})
+
+        self.assertFalse(config.warmup_on_start)
+
+    def test_build_runtime_config_allows_explicit_warmup_override_on_space(self):
+        from space_bootstrap import build_runtime_config
+
+        config = build_runtime_config(
+            {
+                "SPACE_ID": "th3w1zard1/Pixal3D",
+                "PIXAL3D_WARMUP_ON_START": "1",
+            }
+        )
+
+        self.assertTrue(config.warmup_on_start)
+
     def test_build_hf_hub_kwargs_can_skip_revision(self):
         from space_bootstrap import RuntimeConfig, build_hf_hub_kwargs
 
