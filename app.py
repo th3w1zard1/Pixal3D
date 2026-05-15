@@ -10,6 +10,7 @@ import numpy as np
 import base64
 import io
 import json
+import traceback
 from datetime import datetime
 from typing import *
 from PIL import Image
@@ -389,6 +390,22 @@ def _finish_progress():
     if session_id:
         _write_progress_file(session_id, {"done": True})
 
+def _fail_progress(stage: str, error: Exception):
+    session_id = getattr(_thread_local, 'active_session', '')
+    if session_id:
+        _write_progress_file(
+            session_id,
+            {
+                "stage": stage,
+                "step": 0,
+                "total": 0,
+                "done": True,
+                "error": True,
+                "message": f"{type(error).__name__}: {error}",
+                "traceback": traceback.format_exc(),
+            },
+        )
+
 def _write_progress_file(session_id: str, data: dict):
     """Atomically write progress JSON to a file (cross-process safe)."""
     path = _progress_file(session_id)
@@ -500,10 +517,18 @@ def generate_3d(
     fov_unit: str = "deg",
     session_id: str = "",
 ) -> Dict:
-    ensure_runtime_ready()
-    install_progress_hooks()
-    from trellis2.utils import render_utils
     _reset_progress(session_id)
+    stage = "Preparing runtime"
+    try:
+        _update_progress(stage, 0, 2)
+        ensure_runtime_ready()
+        stage = "Installing progress hooks"
+        _update_progress(stage, 1, 2)
+        install_progress_hooks()
+        from trellis2.utils import render_utils
+    except Exception as exc:
+        _fail_progress(stage, exc)
+        raise
     _update_progress("Preprocessing & Camera Estimation", 0, 1)
     
     torch.manual_seed(seed)
