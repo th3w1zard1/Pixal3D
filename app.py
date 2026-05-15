@@ -477,9 +477,9 @@ def generation_gpu_duration(
     session_id: str = "",
 ) -> int:
     try:
-        return 360 if int(resolution) <= 1024 else 600
+        return 300 if int(resolution) <= 1024 else 480
     except (TypeError, ValueError):
-        return 600
+        return 480
 
 
 def extract_glb_gpu_duration(
@@ -489,9 +489,9 @@ def extract_glb_gpu_duration(
     session_id: str = "",
 ) -> int:
     try:
-        return 360 if int(texture_size) <= 1024 else 480
+        return 240 if int(texture_size) <= 1024 else 360
     except (TypeError, ValueError):
-        return 480
+        return 360
 
 # ============================================================================
 # API Implementation
