@@ -1,5 +1,6 @@
 import importlib
 
+import torch
 import utils3d
 
 
@@ -39,4 +40,30 @@ def get_image_rays_compat(extrinsics, intrinsics, width: int, height: int):
     if callable(helper):
         return helper(extrinsics, intrinsics, width, height)
 
-    raise AttributeError("utils3d.torch is missing get_image_rays")
+    u = torch.linspace(
+        0.5 / width,
+        (width - 0.5) / width,
+        width,
+        device=extrinsics.device,
+        dtype=extrinsics.dtype,
+    )
+    v = torch.linspace(
+        0.5 / height,
+        (height - 0.5) / height,
+        height,
+        device=extrinsics.device,
+        dtype=extrinsics.dtype,
+    )
+    u, v = torch.meshgrid(u, v, indexing="xy")
+    uv = torch.stack([u, v], dim=-1).reshape(-1, 2)
+    uvz = torch.cat([uv, torch.ones_like(uv[..., :1])], dim=-1)
+
+    with torch.cuda.amp.autocast(enabled=False):
+        inv_transformation = (intrinsics @ extrinsics[..., :3, :3]).inverse()
+        inv_extrinsics = extrinsics.inverse()
+
+    rays_d = uvz @ inv_transformation.transpose(-1, -2)
+    rays_o = inv_extrinsics[..., None, :3, 3]
+    rays_o = rays_o.unflatten(-2, (1, 1))
+    rays_d = rays_d.unflatten(-2, (height, width))
+    return rays_o, rays_d
