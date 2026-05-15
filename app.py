@@ -455,6 +455,44 @@ def install_progress_hooks():
     _ovp_module.tqdm = _TqdmProgressInterceptor
     _progress_hooks_installed = True
 
+
+def generation_gpu_duration(
+    image: FileData,
+    seed: int,
+    resolution: int,
+    ss_guidance_strength: float = 7.5,
+    ss_guidance_rescale: float = 0.7,
+    ss_sampling_steps: int = 12,
+    ss_rescale_t: float = 5.0,
+    shape_slat_guidance_strength: float = 7.5,
+    shape_slat_guidance_rescale: float = 0.5,
+    shape_slat_sampling_steps: int = 12,
+    shape_slat_rescale_t: float = 3.0,
+    tex_slat_guidance_strength: float = 1.0,
+    tex_slat_guidance_rescale: float = 0.0,
+    tex_slat_sampling_steps: int = 12,
+    tex_slat_rescale_t: float = 3.0,
+    manual_fov: float = -1.0,
+    fov_unit: str = "deg",
+    session_id: str = "",
+) -> int:
+    try:
+        return 360 if int(resolution) <= 1024 else 600
+    except (TypeError, ValueError):
+        return 600
+
+
+def extract_glb_gpu_duration(
+    state_path: str,
+    decimation_target: int,
+    texture_size: int,
+    session_id: str = "",
+) -> int:
+    try:
+        return 360 if int(texture_size) <= 1024 else 480
+    except (TypeError, ValueError):
+        return 480
+
 # ============================================================================
 # API Implementation
 # ============================================================================
@@ -496,7 +534,7 @@ def preprocess(image: FileData) -> FileData:
     return FileData(path=out_path)
 
 @app.api()
-@spaces.GPU(duration=120)
+@spaces.GPU(duration=generation_gpu_duration)
 def generate_3d(
     image: FileData, 
     seed: int, 
@@ -625,7 +663,7 @@ def generate_3d(
         raise
 
 @app.api()
-@spaces.GPU(duration=240)
+@spaces.GPU(duration=extract_glb_gpu_duration)
 def extract_glb_api(state_path: str, decimation_target: int, texture_size: int, session_id: str = "") -> FileData:
     ensure_runtime_ready()
     install_progress_hooks()
