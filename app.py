@@ -526,98 +526,103 @@ def generate_3d(
         _update_progress(stage, 1, 2)
         install_progress_hooks()
         from trellis2.utils import render_utils
+        stage = "Preprocessing & Camera Estimation"
+        _update_progress(stage, 0, 1)
+
+        torch.manual_seed(seed)
+        hr_resolution = int(resolution)
+
+        img = Image.open(image["path"])
+        # Image is already preprocessed by /preprocess endpoint, use directly
+        image_preprocessed = img
+        temp_processed_path = os.path.join(TMP_DIR, f"temp_proc_{session_id[:8]}_{int(time.time()*1000)}.png")
+        image_preprocessed.save(temp_processed_path)
+
+        if manual_fov > 0:
+            # Convert to radians based on unit
+            if fov_unit == "rad":
+                camera_angle_x = float(manual_fov)
+                fov_deg = math.degrees(manual_fov)
+            else:
+                camera_angle_x = math.radians(manual_fov)
+                fov_deg = float(manual_fov)
+            grid_point = torch.tensor([-1.0, 0.0, 0.0])
+            distance = distance_from_fov(
+                camera_angle_x, grid_point,
+                torch.tensor([0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]),
+                WILD_MESH_SCALE, WILD_IMAGE_RESOLUTION
+            )["distance_from_x"]
+            camera_params = {'camera_angle_x': camera_angle_x, 'distance': distance, 'mesh_scale': WILD_MESH_SCALE}
+            print(f"[Camera] Using manual FOV: {fov_deg:.2f}° ({camera_angle_x:.4f} rad), distance: {distance:.4f}")
+        else:
+            camera_params = get_camera_params_wild_moge(
+                temp_processed_path, device="cuda",
+                mesh_scale=WILD_MESH_SCALE, extend_pixel=WILD_EXTEND_PIXEL,
+                image_resolution=WILD_IMAGE_RESOLUTION,
+            )
+        _update_progress(stage, 1, 1)
+
+        ss_sampler_override = {"steps": ss_sampling_steps, "guidance_strength": ss_guidance_strength,
+                               "guidance_rescale": ss_guidance_rescale, "rescale_t": ss_rescale_t}
+        shape_sampler_override = {"steps": shape_slat_sampling_steps, "guidance_strength": shape_slat_guidance_strength,
+                                  "guidance_rescale": shape_slat_guidance_rescale, "rescale_t": shape_slat_rescale_t}
+        tex_sampler_override = {"steps": tex_slat_sampling_steps, "guidance_strength": tex_slat_guidance_strength,
+                                "guidance_rescale": tex_slat_guidance_rescale, "rescale_t": tex_slat_rescale_t}
+
+        stage = "Running Pixal3D pipeline"
+        _update_progress(stage, 0, 1)
+        pipeline_type = f"{hr_resolution}_cascade"
+        mesh_list, (shape_slat, tex_slat, res) = pipeline.run(
+            image_preprocessed,
+            camera_params=camera_params,
+            seed=seed,
+            sparse_structure_sampler_params=ss_sampler_override,
+            shape_slat_sampler_params=shape_sampler_override,
+            tex_slat_sampler_params=tex_sampler_override,
+            preprocess_image=False,
+            return_latent=True,
+            pipeline_type=pipeline_type,
+            max_num_tokens=CASCADE_MAX_NUM_TOKENS,
+        )
+        _update_progress(stage, 1, 1)
+
+        mesh = mesh_list[0]
+        state_path = pack_state(shape_slat, tex_slat, res)
+
+        stage = "Rendering views"
+        _update_progress(stage, 0, 1)
+        mesh.simplify(16777216)
+        cam_dist = camera_params['distance']
+        near = max(0.01, cam_dist - 2.0)
+        far = cam_dist + 10.0
+        renders = render_utils.render_proj_aligned_video(
+            mesh, camera_angle_x=camera_params['camera_angle_x'],
+            distance=cam_dist, resolution=1024,
+            num_frames=STEPS, envmap=envmap,
+            near=near, far=far,
+        )
+        _update_progress(stage, 1, 1)
+
+        # Save renders and return paths
+        render_files = {}
+        for mode_key, frames in renders.items():
+            mode_files = []
+            for i, frame in enumerate(frames):
+                p = os.path.abspath(os.path.join(TMP_DIR, f"render_{mode_key}_{i}_{int(time.time()*1000)}.jpg"))
+                Image.fromarray(frame).save(p, quality=85)
+                mode_files.append(FileData(path=p))
+            render_files[mode_key] = mode_files
+
+        _finish_progress()
+        return {
+            "render_paths": render_files,
+            "state_path": os.path.abspath(state_path),
+            "camera_angle_x": camera_params['camera_angle_x'],
+            "distance": camera_params['distance'],
+        }
     except Exception as exc:
         _fail_progress(stage, exc)
         raise
-    _update_progress("Preprocessing & Camera Estimation", 0, 1)
-    
-    torch.manual_seed(seed)
-    hr_resolution = int(resolution)
-    
-    img = Image.open(image["path"])
-    # Image is already preprocessed by /preprocess endpoint, use directly
-    image_preprocessed = img
-    temp_processed_path = os.path.join(TMP_DIR, f"temp_proc_{session_id[:8]}_{int(time.time()*1000)}.png")
-    image_preprocessed.save(temp_processed_path)
-    
-    if manual_fov > 0:
-        # Convert to radians based on unit
-        if fov_unit == "rad":
-            camera_angle_x = float(manual_fov)
-            fov_deg = math.degrees(manual_fov)
-        else:
-            camera_angle_x = math.radians(manual_fov)
-            fov_deg = float(manual_fov)
-        grid_point = torch.tensor([-1.0, 0.0, 0.0])
-        distance = distance_from_fov(
-            camera_angle_x, grid_point,
-            torch.tensor([0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]),
-            WILD_MESH_SCALE, WILD_IMAGE_RESOLUTION
-        )["distance_from_x"]
-        camera_params = {'camera_angle_x': camera_angle_x, 'distance': distance, 'mesh_scale': WILD_MESH_SCALE}
-        print(f"[Camera] Using manual FOV: {fov_deg:.2f}° ({camera_angle_x:.4f} rad), distance: {distance:.4f}")
-    else:
-        camera_params = get_camera_params_wild_moge(
-            temp_processed_path, device="cuda",
-            mesh_scale=WILD_MESH_SCALE, extend_pixel=WILD_EXTEND_PIXEL,
-            image_resolution=WILD_IMAGE_RESOLUTION,
-        )
-    _update_progress("Preprocessing & Camera Estimation", 1, 1)
-    
-    ss_sampler_override = {"steps": ss_sampling_steps, "guidance_strength": ss_guidance_strength,
-                           "guidance_rescale": ss_guidance_rescale, "rescale_t": ss_rescale_t}
-    shape_sampler_override = {"steps": shape_slat_sampling_steps, "guidance_strength": shape_slat_guidance_strength,
-                              "guidance_rescale": shape_slat_guidance_rescale, "rescale_t": shape_slat_rescale_t}
-    tex_sampler_override = {"steps": tex_slat_sampling_steps, "guidance_strength": tex_slat_guidance_strength,
-                            "guidance_rescale": tex_slat_guidance_rescale, "rescale_t": tex_slat_rescale_t}
-
-    pipeline_type = f"{hr_resolution}_cascade"
-    mesh_list, (shape_slat, tex_slat, res) = pipeline.run(
-        image_preprocessed,
-        camera_params=camera_params,
-        seed=seed,
-        sparse_structure_sampler_params=ss_sampler_override,
-        shape_slat_sampler_params=shape_sampler_override,
-        tex_slat_sampler_params=tex_sampler_override,
-        preprocess_image=False,
-        return_latent=True,
-        pipeline_type=pipeline_type,
-        max_num_tokens=CASCADE_MAX_NUM_TOKENS,
-    )
-    
-    mesh = mesh_list[0]
-    state_path = pack_state(shape_slat, tex_slat, res)
-    
-    _update_progress("Rendering views", 0, 1)
-    mesh.simplify(16777216)
-    cam_dist = camera_params['distance']
-    near = max(0.01, cam_dist - 2.0)
-    far = cam_dist + 10.0
-    renders = render_utils.render_proj_aligned_video(
-        mesh, camera_angle_x=camera_params['camera_angle_x'],
-        distance=cam_dist, resolution=1024,
-        num_frames=STEPS, envmap=envmap,
-        near=near, far=far,
-    )
-    _update_progress("Rendering views", 1, 1)
-    
-    # Save renders and return paths
-    render_files = {}
-    for mode_key, frames in renders.items():
-        mode_files = []
-        for i, frame in enumerate(frames):
-            p = os.path.abspath(os.path.join(TMP_DIR, f"render_{mode_key}_{i}_{int(time.time()*1000)}.jpg"))
-            Image.fromarray(frame).save(p, quality=85)
-            mode_files.append(FileData(path=p))
-        render_files[mode_key] = mode_files
-
-    _finish_progress()
-    return {
-        "render_paths": render_files,
-        "state_path": os.path.abspath(state_path),
-        "camera_angle_x": camera_params['camera_angle_x'],
-        "distance": camera_params['distance'],
-    }
 
 @app.api()
 @spaces.GPU(duration=240)
