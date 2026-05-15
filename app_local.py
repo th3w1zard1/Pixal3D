@@ -171,10 +171,12 @@ def load_moge_model(device="cuda", model_name=MOGE_MODEL_NAME):
 pipeline = None
 moge_model = None
 envmap = None
+preprocess_model = None
 runtime_config = build_runtime_config()
 resolved_pipeline_dir = None
 runtime_state = ModelInitState()
 warmup_thread = None
+preprocess_lock = threading.Lock()
 
 
 def resolve_pipeline_source(model_path: str) -> str:
@@ -277,6 +279,61 @@ def init_models():
             'sunset': EnvMap(torch.tensor(cv2.cvtColor(cv2.imread(os.path.join(_base, 'assets/hdri/sunset.exr'), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB), dtype=torch.float32, device='cuda')),
             'courtyard': EnvMap(torch.tensor(cv2.cvtColor(cv2.imread(os.path.join(_base, 'assets/hdri/courtyard.exr'), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB), dtype=torch.float32, device='cuda')),
         }
+
+
+def get_preprocess_model():
+    global preprocess_model
+    with preprocess_lock:
+        if preprocess_model is None:
+            from trellis2.pipelines.rembg import BiRefNet
+
+            preprocess_model = BiRefNet(
+                model_name=runtime_config.rembg_model,
+                fallback_model_names=runtime_config.rembg_fallback_models,
+                trust_remote_code=runtime_config.rembg_trust_remote_code,
+            )
+        return preprocess_model
+
+
+def preprocess_image_for_ui(input_image: Image.Image, bg_color: tuple = (0, 0, 0)) -> Image.Image:
+    has_alpha = False
+    if input_image.mode == 'RGBA':
+        alpha = np.array(input_image)[:, :, 3]
+        if not np.all(alpha == 255):
+            has_alpha = True
+
+    max_size = max(input_image.size)
+    scale = min(1, 1024 / max_size)
+    if scale < 1:
+        input_image = input_image.resize(
+            (int(input_image.width * scale), int(input_image.height * scale)),
+            Image.Resampling.LANCZOS,
+        )
+
+    if has_alpha:
+        output = input_image
+    else:
+        output = get_preprocess_model()(input_image.convert('RGB'))
+
+    output_np = np.array(output)
+    alpha = output_np[:, :, 3]
+    bbox = np.argwhere(alpha > 0.8 * 255)
+    bbox = np.min(bbox[:, 1]), np.min(bbox[:, 0]), np.max(bbox[:, 1]), np.max(bbox[:, 0])
+    center = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
+    size = int(max(bbox[2] - bbox[0], bbox[3] - bbox[1]) * 1.1)
+    bbox = (
+        center[0] - size // 2,
+        center[1] - size // 2,
+        center[0] + size // 2,
+        center[1] + size // 2,
+    )
+    output = output.crop(bbox)  # type: ignore[arg-type]
+    output = np.array(output).astype(np.float32) / 255
+    rgb = output[:, :, :3]
+    a = output[:, :, 3:4]
+    bg = np.array(bg_color, dtype=np.float32) / 255.0
+    composited = rgb * a + bg * (1.0 - a)
+    return Image.fromarray((np.clip(composited, 0, 1) * 255).astype(np.uint8))
 
 # ============================================================================
 # Utilities
@@ -506,11 +563,9 @@ async def queue_status(request: Request):
     })
 
 @app.api()
-@spaces.GPU(duration=30)
 def preprocess(image: FileData) -> FileData:
-    ensure_runtime_ready()
     img = Image.open(image["path"])
-    processed = pipeline.preprocess_image(img)
+    processed = preprocess_image_for_ui(img)
     out_path = os.path.join(TMP_DIR, f"preprocessed_{int(time.time()*1000)}.png")
     processed.save(out_path)
     return FileData(path=out_path)
