@@ -589,9 +589,11 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         meshes, subs = self.decode_shape_slat(shape_slat, resolution)
         tex_voxels = self.decode_tex_slat(tex_slat, subs)
         out_mesh = []
-        torch.cuda.synchronize()
+        if shape_slat.device.type == 'cuda':
+            torch.cuda.synchronize()
         for m, v in zip(meshes, tex_voxels):
-            m.fill_holes()
+            if m.device.type == 'cuda':
+                m.fill_holes()
             out_mesh.append(
                 MeshWithVoxel(
                     m.vertices, m.faces,
@@ -604,6 +606,10 @@ class Pixal3DImageTo3DPipeline(Pipeline):
                 )
             )
         return out_mesh
+
+    def _maybe_clear_cuda_cache(self) -> None:
+        if self.device.type == 'cuda':
+            torch.cuda.empty_cache()
     
     @torch.no_grad()
     def run(
@@ -683,7 +689,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
             num_samples, sparse_structure_sampler_params
         )
         del cond_ss
-        torch.cuda.empty_cache()
+        self._maybe_clear_cuda_cache()
 
         # ---- Stage 2: Shape LR 512 (proj) ----
         cond_shape_lr = self.get_proj_cond_shape(
@@ -697,7 +703,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
             coords, shape_slat_sampler_params
         )
         del cond_shape_lr
-        torch.cuda.empty_cache()
+        self._maybe_clear_cuda_cache()
 
         # ---- Stage 3a: Upsample LR → HR ----
         if self.low_vram:
@@ -724,7 +730,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
 
         actual_grid_res = actual_hr_resolution // 16
         del lr_slat, hr_coords, quant_coords
-        torch.cuda.empty_cache()
+        self._maybe_clear_cuda_cache()
 
         # ---- Stage 3b: Shape HR (proj) ----
         cond_shape_hr = self.get_proj_cond_shape(
@@ -756,7 +762,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         mean = torch.tensor(self.shape_slat_normalization['mean'])[None].to(hr_slat.device)
         shape_slat = hr_slat * std + mean
         del cond_shape_hr, noise_hr, hr_slat, hr_coords_unique
-        torch.cuda.empty_cache()
+        self._maybe_clear_cuda_cache()
 
         # ---- Stage 4: Texture (proj) ----
         tex_grid_res = actual_hr_resolution // 16
@@ -772,7 +778,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
             shape_slat, tex_slat_sampler_params
         )
         del cond_tex
-        torch.cuda.empty_cache()
+        self._maybe_clear_cuda_cache()
 
         # ---- Stage 5: Decode ----
         res = actual_hr_resolution

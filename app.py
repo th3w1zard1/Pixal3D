@@ -16,6 +16,7 @@ from typing import *
 from PIL import Image
 
 import threading
+from contextlib import contextmanager
 try:
     import nest_asyncio
     nest_asyncio.apply()
@@ -24,6 +25,15 @@ except ImportError:
 
 # Lock for model initialization
 init_lock = threading.Lock()
+# Lock for serializing inference requests
+inference_lock = threading.Lock()
+# Queue tracking
+_queue_lock = threading.Lock()
+_queue_running_session = ""
+_queue_start_time = 0.0
+_pending_sessions: list[str] = []
+_pending_times: dict[str, float] = {}
+_PENDING_TIMEOUT = 600
 
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -138,6 +148,137 @@ resolved_pipeline_dir = None
 runtime_state = ModelInitState()
 warmup_thread = None
 preprocess_lock = threading.Lock()
+current_runtime_device = "cuda"
+
+
+def _default_dense_attn_backend() -> str:
+    configured = os.environ.get("ATTN_BACKEND", "flash_attn")
+    mapping = {
+        "flash_attn": "flash_attn",
+        "flash_attn_2": "flash_attn",
+        "flash_attn_3": "flash_attn_3",
+        "flash_attn_4": "flash_attn_4",
+        "xformers": "xformers",
+        "sdpa": "sdpa",
+        "naive": "naive",
+    }
+    return mapping.get(configured, "flash_attn")
+
+
+DEFAULT_ATTN_BACKEND = _default_dense_attn_backend()
+
+
+@contextmanager
+def acquire_inference(session_id: str = ""):
+    """Serialize inference and maintain queue state for the browser progress UI."""
+    global _queue_running_session, _queue_start_time
+
+    with _queue_lock:
+        if session_id and session_id not in _pending_sessions:
+            _pending_sessions.append(session_id)
+            _pending_times[session_id] = time.time()
+
+    try:
+        with inference_lock:
+            with _queue_lock:
+                if session_id and session_id in _pending_sessions:
+                    _pending_sessions.remove(session_id)
+                _pending_times.pop(session_id, None)
+                _queue_running_session = session_id
+                _queue_start_time = time.time()
+            try:
+                yield
+            finally:
+                with _queue_lock:
+                    _queue_running_session = ""
+                    _queue_start_time = 0.0
+    except BaseException:
+        with _queue_lock:
+            if session_id and session_id in _pending_sessions:
+                _pending_sessions.remove(session_id)
+            _pending_times.pop(session_id, None)
+        raise
+
+
+def _normalize_device(device: Union[str, torch.device]) -> torch.device:
+    return device if isinstance(device, torch.device) else torch.device(device)
+
+
+def _set_dense_attention_backend(device: Union[str, torch.device]) -> None:
+    from trellis2.modules.attention import config as attention_config
+
+    normalized = _normalize_device(device)
+    backend = "sdpa" if normalized.type == "cpu" else DEFAULT_ATTN_BACKEND
+    attention_config.set_backend(backend)
+    print(f"[Runtime] Dense attention backend set to: {backend}")
+
+
+def move_runtime_to(device: Union[str, torch.device]) -> None:
+    global current_runtime_device, pipeline, moge_model
+
+    normalized = _normalize_device(device)
+    target = normalized.type
+    if pipeline is None:
+        return
+    if current_runtime_device == target:
+        return
+
+    _set_dense_attention_backend(normalized)
+    print(f"[Runtime] Moving runtime to {target}...")
+
+    if target == "cuda":
+        pipeline.cuda()
+    else:
+        pipeline.cpu()
+
+    for attr in [
+        "image_cond_model_ss",
+        "image_cond_model_shape_512",
+        "image_cond_model_shape_1024",
+        "image_cond_model_tex_1024",
+    ]:
+        model = getattr(pipeline, attr, None)
+        if model is not None:
+            model.to(normalized)
+
+    if moge_model is not None:
+        moge_model.to(normalized)
+
+    current_runtime_device = target
+
+
+def is_zerogpu_quota_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "zerogpu quota" in text or "exceeded your zerogpu quota" in text
+
+
+def build_cpu_fallback_error(gpu_exc: Exception, cpu_exc: Exception) -> str:
+    return (
+        "ZeroGPU quota was exhausted, so Pixal3D attempted CPU fallback. "
+        "This build still depends on GPU-only sparse kernels for full 3D generation, "
+        f"so the CPU retry could not complete: {type(cpu_exc).__name__}: {cpu_exc}"
+    )
+
+
+def export_basic_glb(mesh, session_id: str = "") -> str:
+    import trimesh
+
+    trimesh_mesh = trimesh.Trimesh(
+        vertices=mesh.vertices.detach().cpu().numpy(),
+        faces=mesh.faces.detach().cpu().numpy(),
+        process=False,
+    )
+    rot = np.array([
+        [-1,  0,  0,  0],
+        [ 0,  0, -1,  0],
+        [ 0, -1,  0,  0],
+        [ 0,  0,  0,  1],
+    ], dtype=np.float64)
+    trimesh_mesh.apply_transform(rot)
+    suffix = f"_{session_id[:8]}" if session_id else ""
+    out_glb = os.path.join(TMP_DIR, f"result_cpu{suffix}_{int(time.time()*1000)}.glb")
+    trimesh_mesh.export(out_glb)
+    return out_glb
 
 
 def resolve_pipeline_source(model_path: str) -> str:
@@ -176,7 +317,7 @@ def start_runtime_warmup():
     return warmup_thread
 
 def init_models():
-    global pipeline, moge_model, envmap
+    global pipeline, moge_model, envmap, current_runtime_device
     with init_lock:
         if pipeline is not None:
             return
@@ -208,6 +349,7 @@ def init_models():
         pipeline = Pixal3DImageTo3DPipeline.from_pretrained(
             resolve_pipeline_source(model_path)
         )
+        _set_dense_attention_backend("cuda")
         
         print("[ImageCond] Building DinoV3ProjFeatureExtractor models...")
         pipeline.image_cond_model_ss = build_image_cond_model(IMAGE_COND_CONFIGS["ss"])
@@ -240,6 +382,7 @@ def init_models():
             'sunset': EnvMap(torch.tensor(cv2.cvtColor(cv2.imread(os.path.join(_base, 'assets/hdri/sunset.exr'), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB), dtype=torch.float32, device='cuda')),
             'courtyard': EnvMap(torch.tensor(cv2.cvtColor(cv2.imread(os.path.join(_base, 'assets/hdri/courtyard.exr'), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB), dtype=torch.float32, device='cuda')),
         }
+        current_runtime_device = "cuda"
 
 
 def get_preprocess_model():
@@ -349,15 +492,16 @@ def pack_state(shape_slat, tex_slat, res):
     np.savez_compressed(state_path, **state_data)
     return state_path
 
-def unpack_state(state_path):
+def unpack_state(state_path, device: Union[str, torch.device] = "cuda"):
     from trellis2.modules.sparse import SparseTensor
 
+    normalized = _normalize_device(device)
     data = np.load(state_path)
     shape_slat = SparseTensor(
-        feats=torch.from_numpy(data['shape_slat_feats']).cuda(),
-        coords=torch.from_numpy(data['coords']).cuda(),
+        feats=torch.from_numpy(data['shape_slat_feats']).to(normalized),
+        coords=torch.from_numpy(data['coords']).to(normalized),
     )
-    tex_slat = shape_slat.replace(torch.from_numpy(data['tex_slat_feats']).cuda())
+    tex_slat = shape_slat.replace(torch.from_numpy(data['tex_slat_feats']).to(normalized))
     return shape_slat, tex_slat, int(data['res'])
 
 # ============================================================================
@@ -455,6 +599,229 @@ def install_progress_hooks():
     _ovp_module.tqdm = _TqdmProgressInterceptor
     _progress_hooks_installed = True
 
+
+def _build_camera_params(
+    temp_processed_path: str,
+    manual_fov: float,
+    fov_unit: str,
+    execution_device: str,
+) -> dict:
+    if manual_fov > 0:
+        if fov_unit == "rad":
+            camera_angle_x = float(manual_fov)
+            fov_deg = math.degrees(manual_fov)
+        else:
+            camera_angle_x = math.radians(manual_fov)
+            fov_deg = float(manual_fov)
+        grid_point = torch.tensor([-1.0, 0.0, 0.0])
+        distance = distance_from_fov(
+            camera_angle_x, grid_point,
+            torch.tensor([0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]),
+            WILD_MESH_SCALE, WILD_IMAGE_RESOLUTION,
+        )["distance_from_x"]
+        print(f"[Camera] Using manual FOV: {fov_deg:.2f}° ({camera_angle_x:.4f} rad), distance: {distance:.4f}")
+        return {'camera_angle_x': camera_angle_x, 'distance': distance, 'mesh_scale': WILD_MESH_SCALE}
+
+    return get_camera_params_wild_moge(
+        temp_processed_path,
+        device=execution_device,
+        mesh_scale=WILD_MESH_SCALE,
+        extend_pixel=WILD_EXTEND_PIXEL,
+        image_resolution=WILD_IMAGE_RESOLUTION,
+    )
+
+
+def _generate_3d_impl(
+    image: FileData,
+    seed: int,
+    resolution: int,
+    ss_guidance_strength: float,
+    ss_guidance_rescale: float,
+    ss_sampling_steps: int,
+    ss_rescale_t: float,
+    shape_slat_guidance_strength: float,
+    shape_slat_guidance_rescale: float,
+    shape_slat_sampling_steps: int,
+    shape_slat_rescale_t: float,
+    tex_slat_guidance_strength: float,
+    tex_slat_guidance_rescale: float,
+    tex_slat_sampling_steps: int,
+    tex_slat_rescale_t: float,
+    manual_fov: float,
+    fov_unit: str,
+    session_id: str,
+    execution_device: str,
+    render_preview: bool,
+) -> Dict:
+    stage = "Preparing runtime"
+    _reset_progress(session_id)
+    try:
+        _update_progress(stage, 0, 2)
+        ensure_runtime_ready()
+        move_runtime_to(execution_device)
+        stage = "Installing progress hooks"
+        _update_progress(stage, 1, 2)
+        install_progress_hooks()
+        from trellis2.utils import render_utils
+    except Exception as exc:
+        _fail_progress(stage, exc)
+        raise
+
+    _update_progress("Preprocessing & Camera Estimation", 0, 1)
+    torch.manual_seed(seed)
+    hr_resolution = int(resolution)
+
+    img = Image.open(image["path"])
+    image_preprocessed = img
+    temp_processed_path = os.path.join(TMP_DIR, f"temp_proc_{session_id[:8]}_{int(time.time()*1000)}.png")
+    image_preprocessed.save(temp_processed_path)
+
+    camera_params = _build_camera_params(
+        temp_processed_path=temp_processed_path,
+        manual_fov=manual_fov,
+        fov_unit=fov_unit,
+        execution_device=execution_device,
+    )
+    _update_progress("Preprocessing & Camera Estimation", 1, 1)
+
+    ss_sampler_override = {
+        "steps": ss_sampling_steps,
+        "guidance_strength": ss_guidance_strength,
+        "guidance_rescale": ss_guidance_rescale,
+        "rescale_t": ss_rescale_t,
+    }
+    shape_sampler_override = {
+        "steps": shape_slat_sampling_steps,
+        "guidance_strength": shape_slat_guidance_strength,
+        "guidance_rescale": shape_slat_guidance_rescale,
+        "rescale_t": shape_slat_rescale_t,
+    }
+    tex_sampler_override = {
+        "steps": tex_slat_sampling_steps,
+        "guidance_strength": tex_slat_guidance_strength,
+        "guidance_rescale": tex_slat_guidance_rescale,
+        "rescale_t": tex_slat_rescale_t,
+    }
+
+    pipeline_type = f"{hr_resolution}_cascade"
+    mesh_list, (shape_slat, tex_slat, res) = pipeline.run(
+        image_preprocessed,
+        camera_params=camera_params,
+        seed=seed,
+        sparse_structure_sampler_params=ss_sampler_override,
+        shape_slat_sampler_params=shape_sampler_override,
+        tex_slat_sampler_params=tex_sampler_override,
+        preprocess_image=False,
+        return_latent=True,
+        pipeline_type=pipeline_type,
+        max_num_tokens=CASCADE_MAX_NUM_TOKENS,
+    )
+
+    mesh = mesh_list[0]
+    state_path = pack_state(shape_slat, tex_slat, res)
+    result: Dict[str, Any] = {
+        "state_path": os.path.abspath(state_path),
+        "camera_angle_x": camera_params["camera_angle_x"],
+        "distance": camera_params["distance"],
+        "error": False,
+    }
+
+    if render_preview:
+        _update_progress("Rendering views", 0, 1)
+        mesh.simplify(16777216)
+        cam_dist = camera_params['distance']
+        near = max(0.01, cam_dist - 2.0)
+        far = cam_dist + 10.0
+        renders = render_utils.render_proj_aligned_video(
+            mesh, camera_angle_x=camera_params['camera_angle_x'],
+            distance=cam_dist, resolution=1024,
+            num_frames=STEPS, envmap=envmap,
+            near=near, far=far,
+        )
+        _update_progress("Rendering views", 1, 1)
+
+        render_files = {}
+        for mode_key, frames in renders.items():
+            mode_files = []
+            for i, frame in enumerate(frames):
+                p = os.path.abspath(os.path.join(TMP_DIR, f"render_{mode_key}_{i}_{int(time.time()*1000)}.jpg"))
+                Image.fromarray(frame).save(p, quality=85)
+                mode_files.append(FileData(path=p))
+            render_files[mode_key] = mode_files
+
+        result.update({
+            "render_paths": render_files,
+            "preview_available": True,
+            "extract_available": True,
+        })
+    else:
+        _update_progress("Exporting CPU fallback GLB", 0, 1)
+        fallback_glb_path = export_basic_glb(mesh, session_id=session_id)
+        _update_progress("Exporting CPU fallback GLB", 1, 1)
+        result.update({
+            "render_paths": {},
+            "preview_available": False,
+            "extract_available": False,
+            "fallback_mode": "cpu",
+            "fallback_glb_path": os.path.abspath(fallback_glb_path),
+            "fallback_message": "ZeroGPU quota exhausted. Generated a geometry-only CPU fallback asset.",
+        })
+
+    _finish_progress()
+    return result
+
+
+def _extract_glb_impl(
+    state_path: str,
+    decimation_target: int,
+    texture_size: int,
+    session_id: str,
+    execution_device: str,
+) -> FileData:
+    stage = "Preparing runtime"
+    try:
+        ensure_runtime_ready()
+        move_runtime_to(execution_device)
+        install_progress_hooks()
+    except Exception as exc:
+        _fail_progress(stage, exc)
+        raise
+
+    _reset_progress(session_id)
+    _update_progress("Decoding latent", 0, 1)
+
+    shape_slat, tex_slat, res = unpack_state(state_path, device=execution_device)
+    mesh = pipeline.decode_latent(shape_slat, tex_slat, res)[0]
+    _update_progress("Decoding latent", 1, 1)
+
+    if execution_device == "cpu":
+        _update_progress("Exporting CPU fallback GLB", 0, 1)
+        out_glb = export_basic_glb(mesh, session_id=session_id)
+        _update_progress("Exporting CPU fallback GLB", 1, 1)
+        _finish_progress()
+        return FileData(path=out_glb)
+
+    import o_voxel.postprocess as o_voxel_postprocess
+    glb = o_voxel_postprocess.to_glb(
+        vertices=mesh.vertices, faces=mesh.faces, attr_volume=mesh.attrs,
+        coords=mesh.coords, attr_layout=pipeline.pbr_attr_layout,
+        grid_size=res, aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
+        decimation_target=decimation_target, texture_size=texture_size,
+        remesh=True, remesh_band=1, remesh_project=0, use_tqdm=True,
+    )
+    rot = np.array([
+        [-1,  0,  0,  0],
+        [ 0,  0, -1,  0],
+        [ 0, -1,  0,  0],
+        [ 0,  0,  0,  1],
+    ], dtype=np.float64)
+    glb.apply_transform(rot)
+
+    out_glb = os.path.join(TMP_DIR, f"result_{int(time.time()*1000)}.glb")
+    glb.export(out_glb, extension_webp=True)
+    _finish_progress()
+    return FileData(path=out_glb)
+
 # ============================================================================
 # API Implementation
 # ============================================================================
@@ -463,7 +830,7 @@ app = Server()
 
 @app.get("/")
 async def homepage():
-    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index_bak.html")
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
     with open(html_path, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
@@ -473,6 +840,9 @@ async def health():
     payload = runtime_state.snapshot()
     payload["warmup_on_start"] = runtime_config.warmup_on_start
     payload["pipeline_resolved"] = resolved_pipeline_dir is not None
+    payload["current_runtime_device"] = current_runtime_device
+    payload["cpu_fallback_mode"] = "experimental"
+    payload["cpu_fallback_available"] = True
     return JSONResponse(payload)
 
 @app.get("/progress")
@@ -486,6 +856,50 @@ async def progress_poll(request: Request):
         return JSONResponse(data)
     except (FileNotFoundError, json.JSONDecodeError):
         return JSONResponse({"stage": "Waiting...", "step": 0, "total": 0, "done": False})
+
+
+@app.get("/queue/join")
+async def queue_join(request: Request):
+    session_id = request.query_params.get("session_id", "")
+    if session_id:
+        with _queue_lock:
+            if session_id not in _pending_sessions and session_id != _queue_running_session:
+                _pending_sessions.append(session_id)
+                _pending_times[session_id] = time.time()
+    return JSONResponse({"ok": True})
+
+
+@app.get("/queue")
+async def queue_status(request: Request):
+    session_id = request.query_params.get("session_id", "")
+    now = time.time()
+    with _queue_lock:
+        stale = [s for s in _pending_sessions if now - _pending_times.get(s, now) > _PENDING_TIMEOUT]
+        for s in stale:
+            _pending_sessions.remove(s)
+            _pending_times.pop(s, None)
+
+        running_session = _queue_running_session
+        pending = list(_pending_sessions)
+        gpu_busy = bool(running_session)
+
+    if session_id and session_id == running_session:
+        position = 0
+    elif session_id and session_id in pending:
+        idx = pending.index(session_id)
+        running_count = 1 if gpu_busy else 0
+        ahead = idx + running_count
+        position = ahead if ahead > 0 else -2
+    else:
+        position = -1
+
+    total_ahead_for_unregistered = len(pending) + (1 if gpu_busy else 0)
+    return JSONResponse({
+        "position": position,
+        "total_waiting": len(pending),
+        "gpu_busy": gpu_busy,
+        "total_ahead_for_unregistered": total_ahead_for_unregistered,
+    })
 
 @app.api()
 def preprocess(image: FileData) -> FileData:
@@ -517,140 +931,113 @@ def generate_3d(
     fov_unit: str = "deg",
     session_id: str = "",
 ) -> Dict:
-    _reset_progress(session_id)
-    stage = "Preparing runtime"
-    try:
-        _update_progress(stage, 0, 2)
-        ensure_runtime_ready()
-        stage = "Installing progress hooks"
-        _update_progress(stage, 1, 2)
-        install_progress_hooks()
-        from trellis2.utils import render_utils
-    except Exception as exc:
-        _fail_progress(stage, exc)
-        raise
-    _update_progress("Preprocessing & Camera Estimation", 0, 1)
-    
-    torch.manual_seed(seed)
-    hr_resolution = int(resolution)
-    
-    img = Image.open(image["path"])
-    # Image is already preprocessed by /preprocess endpoint, use directly
-    image_preprocessed = img
-    temp_processed_path = os.path.join(TMP_DIR, f"temp_proc_{session_id[:8]}_{int(time.time()*1000)}.png")
-    image_preprocessed.save(temp_processed_path)
-    
-    if manual_fov > 0:
-        # Convert to radians based on unit
-        if fov_unit == "rad":
-            camera_angle_x = float(manual_fov)
-            fov_deg = math.degrees(manual_fov)
-        else:
-            camera_angle_x = math.radians(manual_fov)
-            fov_deg = float(manual_fov)
-        grid_point = torch.tensor([-1.0, 0.0, 0.0])
-        distance = distance_from_fov(
-            camera_angle_x, grid_point,
-            torch.tensor([0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]),
-            WILD_MESH_SCALE, WILD_IMAGE_RESOLUTION
-        )["distance_from_x"]
-        camera_params = {'camera_angle_x': camera_angle_x, 'distance': distance, 'mesh_scale': WILD_MESH_SCALE}
-        print(f"[Camera] Using manual FOV: {fov_deg:.2f}° ({camera_angle_x:.4f} rad), distance: {distance:.4f}")
-    else:
-        camera_params = get_camera_params_wild_moge(
-            temp_processed_path, device="cuda",
-            mesh_scale=WILD_MESH_SCALE, extend_pixel=WILD_EXTEND_PIXEL,
-            image_resolution=WILD_IMAGE_RESOLUTION,
+    with acquire_inference(session_id):
+        return _generate_3d_impl(
+            image=image,
+            seed=seed,
+            resolution=resolution,
+            ss_guidance_strength=ss_guidance_strength,
+            ss_guidance_rescale=ss_guidance_rescale,
+            ss_sampling_steps=ss_sampling_steps,
+            ss_rescale_t=ss_rescale_t,
+            shape_slat_guidance_strength=shape_slat_guidance_strength,
+            shape_slat_guidance_rescale=shape_slat_guidance_rescale,
+            shape_slat_sampling_steps=shape_slat_sampling_steps,
+            shape_slat_rescale_t=shape_slat_rescale_t,
+            tex_slat_guidance_strength=tex_slat_guidance_strength,
+            tex_slat_guidance_rescale=tex_slat_guidance_rescale,
+            tex_slat_sampling_steps=tex_slat_sampling_steps,
+            tex_slat_rescale_t=tex_slat_rescale_t,
+            manual_fov=manual_fov,
+            fov_unit=fov_unit,
+            session_id=session_id,
+            execution_device="cuda",
+            render_preview=True,
         )
-    _update_progress("Preprocessing & Camera Estimation", 1, 1)
-    
-    ss_sampler_override = {"steps": ss_sampling_steps, "guidance_strength": ss_guidance_strength,
-                           "guidance_rescale": ss_guidance_rescale, "rescale_t": ss_rescale_t}
-    shape_sampler_override = {"steps": shape_slat_sampling_steps, "guidance_strength": shape_slat_guidance_strength,
-                              "guidance_rescale": shape_slat_guidance_rescale, "rescale_t": shape_slat_rescale_t}
-    tex_sampler_override = {"steps": tex_slat_sampling_steps, "guidance_strength": tex_slat_guidance_strength,
-                            "guidance_rescale": tex_slat_guidance_rescale, "rescale_t": tex_slat_rescale_t}
 
-    pipeline_type = f"{hr_resolution}_cascade"
-    mesh_list, (shape_slat, tex_slat, res) = pipeline.run(
-        image_preprocessed,
-        camera_params=camera_params,
-        seed=seed,
-        sparse_structure_sampler_params=ss_sampler_override,
-        shape_slat_sampler_params=shape_sampler_override,
-        tex_slat_sampler_params=tex_sampler_override,
-        preprocess_image=False,
-        return_latent=True,
-        pipeline_type=pipeline_type,
-        max_num_tokens=CASCADE_MAX_NUM_TOKENS,
-    )
-    
-    mesh = mesh_list[0]
-    state_path = pack_state(shape_slat, tex_slat, res)
-    
-    _update_progress("Rendering views", 0, 1)
-    mesh.simplify(16777216)
-    cam_dist = camera_params['distance']
-    near = max(0.01, cam_dist - 2.0)
-    far = cam_dist + 10.0
-    renders = render_utils.render_proj_aligned_video(
-        mesh, camera_angle_x=camera_params['camera_angle_x'],
-        distance=cam_dist, resolution=1024,
-        num_frames=STEPS, envmap=envmap,
-        near=near, far=far,
-    )
-    _update_progress("Rendering views", 1, 1)
-    
-    # Save renders and return paths
-    render_files = {}
-    for mode_key, frames in renders.items():
-        mode_files = []
-        for i, frame in enumerate(frames):
-            p = os.path.abspath(os.path.join(TMP_DIR, f"render_{mode_key}_{i}_{int(time.time()*1000)}.jpg"))
-            Image.fromarray(frame).save(p, quality=85)
-            mode_files.append(FileData(path=p))
-        render_files[mode_key] = mode_files
 
-    _finish_progress()
-    return {
-        "render_paths": render_files,
-        "state_path": os.path.abspath(state_path),
-        "camera_angle_x": camera_params['camera_angle_x'],
-        "distance": camera_params['distance'],
-    }
+@app.api()
+def generate_3d_cpu_fallback(
+    image: FileData,
+    seed: int,
+    resolution: int,
+    ss_guidance_strength: float = 7.5,
+    ss_guidance_rescale: float = 0.7,
+    ss_sampling_steps: int = 12,
+    ss_rescale_t: float = 5.0,
+    shape_slat_guidance_strength: float = 7.5,
+    shape_slat_guidance_rescale: float = 0.5,
+    shape_slat_sampling_steps: int = 12,
+    shape_slat_rescale_t: float = 3.0,
+    tex_slat_guidance_strength: float = 1.0,
+    tex_slat_guidance_rescale: float = 0.0,
+    tex_slat_sampling_steps: int = 12,
+    tex_slat_rescale_t: float = 3.0,
+    manual_fov: float = -1.0,
+    fov_unit: str = "deg",
+    session_id: str = "",
+) -> Dict:
+    with acquire_inference(session_id):
+        try:
+            return _generate_3d_impl(
+                image=image,
+                seed=seed,
+                resolution=resolution,
+                ss_guidance_strength=ss_guidance_strength,
+                ss_guidance_rescale=ss_guidance_rescale,
+                ss_sampling_steps=ss_sampling_steps,
+                ss_rescale_t=ss_rescale_t,
+                shape_slat_guidance_strength=shape_slat_guidance_strength,
+                shape_slat_guidance_rescale=shape_slat_guidance_rescale,
+                shape_slat_sampling_steps=shape_slat_sampling_steps,
+                shape_slat_rescale_t=shape_slat_rescale_t,
+                tex_slat_guidance_strength=tex_slat_guidance_strength,
+                tex_slat_guidance_rescale=tex_slat_guidance_rescale,
+                tex_slat_sampling_steps=tex_slat_sampling_steps,
+                tex_slat_rescale_t=tex_slat_rescale_t,
+                manual_fov=manual_fov,
+                fov_unit=fov_unit,
+                session_id=session_id,
+                execution_device="cpu",
+                render_preview=False,
+            )
+        except Exception as cpu_exc:
+            _fail_progress("CPU fallback unavailable", cpu_exc)
+            return {
+                "error": True,
+                "fallback_mode": "cpu",
+                "message": build_cpu_fallback_error(RuntimeError("ZeroGPU quota exhausted"), cpu_exc),
+                "render_paths": {},
+                "state_path": "",
+                "camera_angle_x": None,
+                "distance": None,
+                "preview_available": False,
+                "extract_available": False,
+            }
 
 @app.api()
 @spaces.GPU(duration=240)
 def extract_glb_api(state_path: str, decimation_target: int, texture_size: int, session_id: str = "") -> FileData:
-    ensure_runtime_ready()
-    install_progress_hooks()
-    import o_voxel.postprocess as o_voxel_postprocess
-    _reset_progress(session_id)
-    _update_progress("Decoding latent", 0, 1)
-    
-    shape_slat, tex_slat, res = unpack_state(state_path)
-    mesh = pipeline.decode_latent(shape_slat, tex_slat, res)[0]
-    _update_progress("Decoding latent", 1, 1)
-    
-    glb = o_voxel_postprocess.to_glb(
-        vertices=mesh.vertices, faces=mesh.faces, attr_volume=mesh.attrs,
-        coords=mesh.coords, attr_layout=pipeline.pbr_attr_layout,
-        grid_size=res, aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
-        decimation_target=decimation_target, texture_size=texture_size,
-        remesh=True, remesh_band=1, remesh_project=0, use_tqdm=True,
-    )
-    rot = np.array([
-        [-1,  0,  0,  0],
-        [ 0,  0, -1,  0],
-        [ 0, -1,  0,  0],
-        [ 0,  0,  0,  1],
-    ], dtype=np.float64)
-    glb.apply_transform(rot)
-    
-    out_glb = os.path.join(TMP_DIR, f"result_{int(time.time()*1000)}.glb")
-    glb.export(out_glb, extension_webp=True)
-    _finish_progress()
-    return FileData(path=out_glb)
+    with acquire_inference(session_id):
+        return _extract_glb_impl(
+            state_path=state_path,
+            decimation_target=decimation_target,
+            texture_size=texture_size,
+            session_id=session_id,
+            execution_device="cuda",
+        )
+
+
+@app.api()
+def extract_glb_api_cpu_fallback(state_path: str, decimation_target: int, texture_size: int, session_id: str = "") -> FileData:
+    with acquire_inference(session_id):
+        return _extract_glb_impl(
+            state_path=state_path,
+            decimation_target=decimation_target,
+            texture_size=texture_size,
+            session_id=session_id,
+            execution_device="cpu",
+        )
 
 # Mount assets and tmp for direct access
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")

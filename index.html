@@ -1249,6 +1249,7 @@
             { name: "Sunset", key: "shaded_sunset" },
             { name: "Blue", key: "shaded_courtyard" }
         ];
+        const ZERO_GPU_RE = /zerogpu quota|exceeded your zerogpu quota/i;
 
         // Global queue status polling
         function startQueuePolling() {
@@ -1356,7 +1357,11 @@
 
             // Step navigation click
             document.getElementById('step-1').onclick = () => setStep(1);
-            document.getElementById('step-2').onclick = () => { if (generationResult) setStep(2); };
+            document.getElementById('step-2').onclick = () => {
+                if (generationResult?.preview_available !== false && generationResult?.render_paths && Object.keys(generationResult.render_paths).length) {
+                    setStep(2);
+                }
+            };
             document.getElementById('step-3').onclick = () => { if (document.getElementById('main-3d-viewer').src) setStep(3); };
 
             // Slider
@@ -1462,8 +1467,90 @@
 
             // Toggle side controls based on step
             document.getElementById('render-controls').style.display = (num >= 2) ? 'block' : 'none';
-            document.getElementById('extract-btn').style.display = (num === 2) ? 'flex' : 'none';
+            const canExtract = generationResult?.extract_available !== false;
+            document.getElementById('extract-btn').style.display = (num === 2 && canExtract) ? 'flex' : 'none';
             document.getElementById('download-btn').style.display = (num === 3) ? 'flex' : 'none';
+        }
+
+        function firstResultData(result) {
+            return Array.isArray(result?.data) ? result.data[0] : result;
+        }
+
+        function extractErrorText(err) {
+            if (!err) return '';
+            if (typeof err === 'string') return err;
+            const parts = [];
+            if (err.message) parts.push(err.message);
+            if (err.title) parts.push(err.title);
+            if (err.error) parts.push(extractErrorText(err.error));
+            try {
+                const json = JSON.stringify(err);
+                if (json && json !== '{}') parts.push(json);
+            } catch (_) { }
+            return parts.filter(Boolean).join(' ');
+        }
+
+        function isZeroGpuQuotaError(err) {
+            return ZERO_GPU_RE.test(extractErrorText(err));
+        }
+
+        function localTmpUrl(path) {
+            if (!path) return '';
+            const filename = path.split(/[\\/]/).pop();
+            return filename ? `/tmp/${filename}` : '';
+        }
+
+        function getFileUrl(fileLike) {
+            if (!fileLike) return '';
+            if (typeof fileLike === 'string') return fileLike.startsWith('/tmp/') ? fileLike : localTmpUrl(fileLike);
+            if (fileLike.url) return fileLike.url;
+            if (fileLike.path) return localTmpUrl(fileLike.path);
+            return '';
+        }
+
+        function updateCameraInfo(result) {
+            if (result?.camera_angle_x != null) {
+                document.getElementById('fov-display').textContent = result.camera_angle_x.toFixed(3);
+                document.getElementById('dist-display').textContent = result.distance.toFixed(3);
+                document.getElementById('camera-info').style.display = 'inline';
+            }
+        }
+
+        async function loadViewerModel(glbUrl, targetStep = 3) {
+            const viewer = resetModelViewer();
+            await new Promise((resolve) => {
+                let settled = false;
+                const onLoad = () => {
+                    if (settled) return;
+                    settled = true;
+                    viewer.removeEventListener('load', onLoad);
+                    clearTimeout(timer);
+                    resolve();
+                };
+                const timer = setTimeout(() => {
+                    if (settled) return;
+                    settled = true;
+                    viewer.removeEventListener('load', onLoad);
+                    resolve();
+                }, 30000);
+                viewer.addEventListener('load', onLoad);
+                viewer.src = glbUrl;
+            });
+            viewer.style.visibility = 'visible';
+            setStep(targetStep);
+            return viewer;
+        }
+
+        async function runCpuGenerationFallback(params) {
+            showToast("GPU quota exhausted. Switching to CPU fallback...");
+            const result = await client.predict("/generate_3d_cpu_fallback", params);
+            return firstResultData(result);
+        }
+
+        async function runCpuExtractionFallback(params) {
+            showToast("GPU quota exhausted during extraction. Switching to CPU geometry export...");
+            const result = await client.predict("/extract_glb_api_cpu_fallback", params);
+            return firstResultData(result);
         }
 
         async function startGeneration() {
@@ -1483,49 +1570,71 @@
 
             showLoading();
             startProgressListener();
+            const params = {
+                image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
+                seed: parseInt(document.getElementById('seed').value),
+                resolution: parseInt(document.getElementById('resolution').value),
+                ss_guidance_strength: parseFloat(document.getElementById('ss_gs').value),
+                ss_sampling_steps: parseInt(document.getElementById('ss_steps').value),
+                shape_slat_guidance_strength: parseFloat(document.getElementById('shape_gs').value),
+                shape_slat_sampling_steps: parseInt(document.getElementById('shape_steps').value),
+                tex_slat_guidance_strength: parseFloat(document.getElementById('tex_gs').value),
+                tex_slat_sampling_steps: parseInt(document.getElementById('tex_steps').value),
+                manual_fov: (() => {
+                    if (document.getElementById('fov-auto').checked) return -1.0;
+                    const v = parseFloat(document.getElementById('manual-fov').value);
+                    return document.getElementById('fov-unit').value === 'rad' ? v * 180 / Math.PI : v;
+                })(),
+                session_id: sessionId
+            };
+
             try {
                 // Register in queue immediately (before Gradio dispatch delay)
                 await fetch(`/queue/join?session_id=${sessionId}`);
-                const params = {
-                    image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
-                    seed: parseInt(document.getElementById('seed').value),
-                    resolution: parseInt(document.getElementById('resolution').value),
-                    ss_guidance_strength: parseFloat(document.getElementById('ss_gs').value),
-                    ss_sampling_steps: parseInt(document.getElementById('ss_steps').value),
-                    shape_slat_guidance_strength: parseFloat(document.getElementById('shape_gs').value),
-                    shape_slat_sampling_steps: parseInt(document.getElementById('shape_steps').value),
-                    tex_slat_guidance_strength: parseFloat(document.getElementById('tex_gs').value),
-                    tex_slat_sampling_steps: parseInt(document.getElementById('tex_steps').value),
-                    manual_fov: (() => {
-                        if (document.getElementById('fov-auto').checked) return -1.0;
-                        const v = parseFloat(document.getElementById('manual-fov').value);
-                        return document.getElementById('fov-unit').value === 'rad' ? v * 180 / Math.PI : v;
-                    })(),
-                    session_id: sessionId
-                };
-
                 const result = await client.predict("/generate_3d", params);
-                generationResult = result.data[0];
-
-                stopProgressListener();
-                populateFrames(generationResult.render_paths);
-
-                // Display camera info
-                if (generationResult.camera_angle_x != null) {
-                    document.getElementById('fov-display').textContent = generationResult.camera_angle_x.toFixed(3);
-                    document.getElementById('dist-display').textContent = generationResult.distance.toFixed(3);
-                    document.getElementById('camera-info').style.display = 'inline';
-                }
-
-                setStep(2);
-                hideLoading();
-                showToast("Generation complete!");
+                generationResult = firstResultData(result);
             } catch (err) {
                 console.error(err);
-                stopProgressListener();
-                hideLoading();
-                showToast("An error occurred during synthesis.");
+                if (isZeroGpuQuotaError(err)) {
+                    try {
+                        generationResult = await runCpuGenerationFallback(params);
+                    } catch (fallbackErr) {
+                        console.error(fallbackErr);
+                        stopProgressListener();
+                        hideLoading();
+                        showToast(extractErrorText(fallbackErr) || "CPU fallback failed.");
+                        return;
+                    }
+                } else {
+                    stopProgressListener();
+                    hideLoading();
+                    showToast(extractErrorText(err) || "An error occurred during synthesis.");
+                    return;
+                }
             }
+
+            stopProgressListener();
+
+            if (generationResult?.error) {
+                hideLoading();
+                showToast(generationResult.message || "CPU fallback could not complete.");
+                return;
+            }
+
+            updateCameraInfo(generationResult);
+
+            if (generationResult?.fallback_mode === 'cpu' && generationResult?.fallback_glb_path) {
+                const glbUrl = getFileUrl(generationResult.fallback_glb_path);
+                await loadViewerModel(glbUrl, 3);
+                hideLoading();
+                showToast(generationResult.fallback_message || "CPU fallback complete.");
+                return;
+            }
+
+            populateFrames(generationResult.render_paths);
+            setStep(2);
+            hideLoading();
+            showToast("Generation complete!");
         }
 
         // Progress Polling
@@ -1702,53 +1811,47 @@
 
             showLoading();
             startProgressListener();
+            const params = {
+                state_path: generationResult.state_path,
+                decimation_target: parseInt(document.getElementById('decimation').value),
+                texture_size: 4096,
+                session_id: sessionId
+            };
+
             try {
                 // Register in queue immediately (before Gradio dispatch delay)
                 await fetch(`/queue/join?session_id=${sessionId}`);
-                const params = {
-                    state_path: generationResult.state_path,
-                    decimation_target: parseInt(document.getElementById('decimation').value),
-                    texture_size: 4096,
-                    session_id: sessionId
-                };
-
                 const result = await client.predict("/extract_glb_api", params);
-                const glbUrl = result.data[0].url;
+                const glbUrl = getFileUrl(firstResultData(result));
 
                 stopProgressListener();
-
-                // Wait for the new model to fully load before revealing (with timeout fallback)
-                await new Promise((resolve) => {
-                    let settled = false;
-                    const onLoad = () => {
-                        if (settled) return;
-                        settled = true;
-                        viewer.removeEventListener('load', onLoad);
-                        clearTimeout(timer);
-                        resolve();
-                    };
-                    // Timeout fallback: if load event never fires (e.g. model-viewer error),
-                    // resolve anyway after 30s to avoid permanent hang
-                    const timer = setTimeout(() => {
-                        if (settled) return;
-                        settled = true;
-                        viewer.removeEventListener('load', onLoad);
-                        resolve();
-                    }, 30000);
-                    viewer.addEventListener('load', onLoad);
-                    viewer.src = glbUrl;
-                });
-
-                viewer.style.visibility = 'visible';
-                setStep(3);
+                await loadViewerModel(glbUrl, 3);
                 hideLoading();
                 showToast("3D Asset ready!");
             } catch (err) {
                 console.error(err);
+                if (isZeroGpuQuotaError(err)) {
+                    try {
+                        const fallbackFile = await runCpuExtractionFallback(params);
+                        const glbUrl = getFileUrl(fallbackFile);
+                        stopProgressListener();
+                        await loadViewerModel(glbUrl, 3);
+                        hideLoading();
+                        showToast("CPU geometry export ready!");
+                        return;
+                    } catch (fallbackErr) {
+                        console.error(fallbackErr);
+                        stopProgressListener();
+                        viewer.style.visibility = 'visible';
+                        hideLoading();
+                        showToast(extractErrorText(fallbackErr) || "CPU extraction fallback failed.");
+                        return;
+                    }
+                }
                 stopProgressListener();
                 viewer.style.visibility = 'visible';
                 hideLoading();
-                showToast("Extraction failed.");
+                showToast(extractErrorText(err) || "Extraction failed.");
             }
         }
 
