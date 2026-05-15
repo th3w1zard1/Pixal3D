@@ -59,6 +59,9 @@ class ModelResolutionTests(unittest.TestCase):
                     {
                         "name": "Pixal3DImageTo3DPipeline",
                         "args": {
+                            "models": {
+                                "sparse_structure_decoder": "ckpts/ss_dec_conv3d_16l8_fp16"
+                            },
                             "rembg_model": {
                                 "name": "BiRefNet",
                                 "args": {"model_name": "briaai/RMBG-2.0"},
@@ -92,4 +95,8 @@ class ModelResolutionTests(unittest.TestCase):
         self.assertEqual(
             resolved_config["args"]["rembg_model"]["args"]["model_name"],
             "ZhengPeng7/BiRefNet",
+        )
+        self.assertEqual(
+            resolved_config["args"]["models"]["sparse_structure_decoder"],
+            "TencentARC/Pixal3D-T/ckpts/ss_dec_conv3d_16l8_fp16",
         )

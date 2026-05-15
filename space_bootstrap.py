@@ -95,6 +95,15 @@ def apply_pipeline_overrides(config: dict, runtime_config: RuntimeConfig) -> dic
     return patched
 
 
+def qualify_relative_model_paths(config: dict, repo_id: str) -> dict:
+    patched = copy.deepcopy(config)
+    models = patched.setdefault("args", {}).get("models", {})
+    for key, value in list(models.items()):
+        if isinstance(value, str) and value.startswith("ckpts/"):
+            models[key] = f"{repo_id}/{value}"
+    return patched
+
+
 def prepare_pipeline_directory(
     repo_id: str,
     runtime_config: RuntimeConfig,
@@ -111,7 +120,8 @@ def prepare_pipeline_directory(
         **build_hf_hub_kwargs(runtime_config),
     )
     config = json.loads(Path(pipeline_path).read_text(encoding="utf-8"))
-    patched_config = apply_pipeline_overrides(config, runtime_config)
+    patched_config = qualify_relative_model_paths(config, repo_id)
+    patched_config = apply_pipeline_overrides(patched_config, runtime_config)
 
     temp_dir = Path(tempfile.mkdtemp(prefix="pixal3d-pipeline-"))
     (temp_dir / "pipeline.json").write_text(
