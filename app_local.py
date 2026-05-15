@@ -66,7 +66,7 @@ def acquire_inference(session_id: str = ""):
 
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-os.environ["ATTN_BACKEND"] = "flash_attn_3"
+os.environ["ATTN_BACKEND"] = "flash_attn_2"
 os.environ["FLEX_GEMM_AUTOTUNE_CACHE_PATH"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'autotune_cache.json')
 os.environ["FLEX_GEMM_AUTOTUNER_VERBOSE"] = '1'
 
@@ -83,8 +83,15 @@ except ImportError:
     spaces = _FakeSpaces()
 from gradio import Server
 from gradio.data_classes import FileData
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from space_bootstrap import build_runtime_config, prepare_pipeline_directory
+from space_runtime import (
+    ModelInitState,
+    build_launch_options,
+    run_initialization,
+    start_background_initialization,
+)
 
 from trellis2.modules.sparse import SparseTensor
 from trellis2.pipelines import Pixal3DImageTo3DPipeline
@@ -170,6 +177,46 @@ def load_moge_model(device="cuda", model_name=MOGE_MODEL_NAME):
 pipeline = None
 moge_model = None
 envmap = None
+runtime_config = build_runtime_config()
+resolved_pipeline_dir = None
+runtime_state = ModelInitState()
+warmup_thread = None
+
+
+def resolve_pipeline_source(model_path: str) -> str:
+    global resolved_pipeline_dir
+    if os.path.exists(os.path.join(model_path, "pipeline.json")):
+        return model_path
+    if resolved_pipeline_dir is None:
+        resolved_pipeline_dir = prepare_pipeline_directory(model_path, runtime_config)
+    return resolved_pipeline_dir
+
+
+def initialize_runtime():
+    run_initialization(runtime_state, init_models)
+
+
+def ensure_runtime_ready():
+    global warmup_thread
+    if runtime_state.snapshot()["ready"]:
+        return
+    if warmup_thread is not None and warmup_thread.is_alive():
+        warmup_thread.join()
+        if runtime_state.snapshot()["ready"]:
+            return
+    initialize_runtime()
+
+
+def start_runtime_warmup():
+    global warmup_thread
+    if warmup_thread is not None and warmup_thread.is_alive():
+        return warmup_thread
+    warmup_thread = start_background_initialization(
+        runtime_state,
+        init_models,
+        enabled=runtime_config.warmup_on_start,
+    )
+    return warmup_thread
 
 def init_models():
     global pipeline, moge_model, envmap
@@ -199,7 +246,9 @@ def init_models():
 
         model_path = "TencentARC/Pixal3D-T"
         print(f"[Pipeline] Loading from {model_path}...")
-        pipeline = Pixal3DImageTo3DPipeline.from_pretrained(model_path)
+        pipeline = Pixal3DImageTo3DPipeline.from_pretrained(
+            resolve_pipeline_source(model_path)
+        )
         
         print("[ImageCond] Building DinoV3ProjFeatureExtractor models...")
         pipeline.image_cond_model_ss = build_image_cond_model(IMAGE_COND_CONFIGS["ss"])
@@ -300,7 +349,6 @@ def unpack_state(state_path):
 # ============================================================================
 
 import asyncio
-from fastapi.responses import JSONResponse
 from fastapi import Request
 
 PROGRESS_DIR = os.path.join(TMP_DIR, '_progress')
@@ -378,6 +426,14 @@ async def homepage():
     with open(html_path, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
+
+@app.get("/health")
+async def health():
+    payload = runtime_state.snapshot()
+    payload["warmup_on_start"] = runtime_config.warmup_on_start
+    payload["pipeline_resolved"] = resolved_pipeline_dir is not None
+    return JSONResponse(payload)
+
 @app.get("/progress")
 async def progress_poll(request: Request):
     """Polling endpoint for real-time progress updates during generation."""
@@ -445,7 +501,7 @@ async def queue_status(request: Request):
 @app.api()
 @spaces.GPU(duration=30)
 def preprocess(image: FileData) -> FileData:
-    init_models()
+    ensure_runtime_ready()
     img = Image.open(image["path"])
     processed = pipeline.preprocess_image(img)
     out_path = os.path.join(TMP_DIR, f"preprocessed_{int(time.time()*1000)}.png")
@@ -474,7 +530,7 @@ def generate_3d(
     session_id: str = "",
 ) -> Dict:
     with acquire_inference(session_id):
-        init_models()
+        ensure_runtime_ready()
         _reset_progress(session_id)
         _update_progress("Preprocessing & Camera Estimation", 0, 1)
         
@@ -565,7 +621,7 @@ def generate_3d(
 @spaces.GPU(duration=240)
 def extract_glb_api(state_path: str, decimation_target: int, texture_size: int, session_id: str = "") -> FileData:
     with acquire_inference(session_id):
-        init_models()
+        ensure_runtime_ready()
         _reset_progress(session_id)
         _update_progress("Decoding latent", 0, 1)
         
@@ -598,13 +654,5 @@ app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/tmp", StaticFiles(directory=TMP_DIR), name="tmp")
 
 if __name__ == "__main__":
-    # Re-install utils3d as in original app.py
-    subprocess.run([
-        "pip", "install", "--force-reinstall", "--no-deps",
-        "https://github.com/LDYang694/Storages/releases/download/20260430/utils3d-0.0.2-py3-none-any.whl"
-    ], check=True)
-    
-    # Pre-initialize models before launching the server
-    init_models()
-    
-    app.launch(show_error=True, share=True)
+    start_runtime_warmup()
+    app.launch(**build_launch_options(os.environ))

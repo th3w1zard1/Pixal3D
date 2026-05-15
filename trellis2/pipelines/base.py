@@ -2,6 +2,7 @@ from typing import *
 import torch
 import torch.nn as nn
 from .. import models
+from space_bootstrap import build_hf_hub_kwargs, build_runtime_config
 
 
 class Pipeline:
@@ -31,7 +32,12 @@ class Pipeline:
             config_file = f"{path}/{config_file}"
         else:
             from huggingface_hub import hf_hub_download
-            config_file = hf_hub_download(path, config_file)
+            runtime_config = build_runtime_config()
+            config_file = hf_hub_download(
+                path,
+                config_file,
+                **build_hf_hub_kwargs(runtime_config),
+            )
 
         with open(config_file, 'r') as f:
             args = json.load(f)['args']

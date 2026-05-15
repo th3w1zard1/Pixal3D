@@ -1,4 +1,5 @@
 import importlib
+from space_bootstrap import build_hf_hub_kwargs, build_runtime_config
 
 __attributes = {
     "Trellis2ImageTo3DPipeline": "trellis2_image_to_3d",
@@ -39,7 +40,12 @@ def from_pretrained(path: str):
         config_file = f"{path}/pipeline.json"
     else:
         from huggingface_hub import hf_hub_download
-        config_file = hf_hub_download(path, "pipeline.json")
+        runtime_config = build_runtime_config()
+        config_file = hf_hub_download(
+            path,
+            "pipeline.json",
+            **build_hf_hub_kwargs(runtime_config),
+        )
 
     with open(config_file, 'r') as f:
         config = json.load(f)
