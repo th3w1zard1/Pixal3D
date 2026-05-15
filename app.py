@@ -487,7 +487,7 @@ def extract_glb_gpu_duration(
     texture_size: int,
     session_id: str = "",
 ) -> int:
-    return 60
+    return 30
 
 # ============================================================================
 # API Implementation
