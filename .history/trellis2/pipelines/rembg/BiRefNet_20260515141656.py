@@ -1,5 +1,4 @@
 from typing import *
-import os
 from transformers import AutoModelForImageSegmentation
 import torch
 from torchvision import transforms
@@ -16,19 +15,15 @@ class BiRefNet:
             "briaai/RMBG-1.4",
         ]
         tried: list[tuple[str, str]] = []
-        self.model: Any = None
+        self.model = None
         self.loaded_model_name = None
         self._device = "cpu"
-        hf_token = os.environ.get("HF_TOKEN") or os.environ.get(
-            "HUGGING_FACE_HUB_TOKEN"
-        )
 
         for candidate in dict.fromkeys(fallback_models):
             try:
                 self.model = AutoModelForImageSegmentation.from_pretrained(
                     candidate,
                     trust_remote_code=True,
-                    token=hf_token,
                 )
                 self.loaded_model_name = candidate
                 if candidate != model_name:
@@ -57,42 +52,28 @@ class BiRefNet:
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             ]
         )
-
+    
     def to(self, device: str):
-        assert self.model is not None
         self._device = device
         self.model.to(device)
 
     def cuda(self):
-        assert self.model is not None
         self._device = "cuda"
         self.model.cuda()
 
     def cpu(self):
-        assert self.model is not None
         self._device = "cpu"
         self.model.cpu()
-
+        
     def __call__(self, image: Image.Image) -> Image.Image:
-        assert self.model is not None
         image_size = image.size
         input_images = self.transform_image(image).unsqueeze(0).to(self._device)
         # Prediction
         with torch.no_grad():
-            outputs = self.model(input_images)
-            if isinstance(outputs, (tuple, list)):
-                pred_tensor = outputs[-1]
-            elif hasattr(outputs, "logits"):
-                pred_tensor = outputs.logits
-            elif isinstance(outputs, dict):
-                pred_tensor = outputs.get("logits") or outputs.get("pred")
-                if pred_tensor is None:
-                    raise RuntimeError("Unsupported segmentation output keys.")
-            else:
-                pred_tensor = outputs
-            preds = pred_tensor.sigmoid().cpu()
+            preds = self.model(input_images)[-1].sigmoid().cpu()
         pred = preds[0].squeeze()
         pred_pil = transforms.ToPILImage()(pred)
         mask = pred_pil.resize(image_size)
         image.putalpha(mask)
         return image
+    

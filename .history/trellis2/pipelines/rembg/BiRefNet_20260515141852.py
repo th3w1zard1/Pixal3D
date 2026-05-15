@@ -19,9 +19,7 @@ class BiRefNet:
         self.model: Any = None
         self.loaded_model_name = None
         self._device = "cpu"
-        hf_token = os.environ.get("HF_TOKEN") or os.environ.get(
-            "HUGGING_FACE_HUB_TOKEN"
-        )
+        hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
 
         for candidate in dict.fromkeys(fallback_models):
             try:
@@ -57,7 +55,7 @@ class BiRefNet:
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
             ]
         )
-
+    
     def to(self, device: str):
         assert self.model is not None
         self._device = device
@@ -72,7 +70,7 @@ class BiRefNet:
         assert self.model is not None
         self._device = "cpu"
         self.model.cpu()
-
+        
     def __call__(self, image: Image.Image) -> Image.Image:
         assert self.model is not None
         image_size = image.size
@@ -96,3 +94,4 @@ class BiRefNet:
         mask = pred_pil.resize(image_size)
         image.putalpha(mask)
         return image
+    

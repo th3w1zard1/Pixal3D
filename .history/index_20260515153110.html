@@ -948,78 +948,7 @@
                 </button>
                 <button class="btn btn-outline" id="extract-btn" style="display: none;">
                     <i data-lucide="box"></i>
-                        <div class="input-wrapper">
-                            <label style="display: flex; justify-content: space-between; align-items: center;">
-                                <span>Shape Sampling Steps
-                                    <span class="tooltip-icon" style="margin-left: 0.3rem;">?
-                                        <div class="tooltip-content">
-                                            <strong>Shape Latent Denoising Iterations</strong>
-                                            Diffusion steps for detailed SDF (shape) generation. More steps improve detail but reduce speed.
-                                            <div class="note">
-                                            <b>6-12:</b> Fast mode (2-3s shape)<br>
-                                            <b>12-20:</b> Balanced (5-8s)<br>
-                                            <b>20-40:</b> High detail (8-15s)<br>
-                                            <b>Production:</b> 12 recommended
-                                            </div>
-                                        </div>
-                                    </span>
-                                </span>
-                                <span><span id="shape_steps_val">12</span></span>
-                            </label>
-                            <input type="range" id="shape_steps" min="1" max="40" step="1" value="12" oninput="updateVal('shape_steps')">
-                        </div>
-                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0;">
-                        <div class="input-wrapper">
-                            <label style="font-size: 0.72rem; color: var(--text-dim); margin-bottom: 0.5rem; display: flex; gap: 0.3rem;">
-                                <input type="checkbox" id="show-texture-controls" style="accent-color: var(--primary); width: 14px; height: 14px; cursor: pointer;">
-                                <span style="cursor: pointer;" onclick="document.getElementById('show-texture-controls').click()">Advanced Texture Tuning</span>
-                            </label>
-                        </div>
-                        <div id="texture-controls" style="display: none; padding-top: 0.75rem; border-top: 1px solid var(--border);"> 
-                            <div class="control-group">
-                                <div class="input-wrapper">
-                                    <label style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span>Texture Guidance
-                                            <span class="tooltip-icon" style="margin-left: 0.3rem;">?
-                                                <div class="tooltip-content">
-                                                    <strong>Texture Latent Guidance Strength</strong>
-                                                    Controls PBR material/color generation. Lower values allow more creative material interpretation.
-                                                    <div class="note">
-                                                    <b>Default 1.0:</b> Balanced colors<br>
-                                                    <b>0.0-0.5:</b> Creative textures<br>
-                                                    <b>1.0-2.0:</b> Faithful colors<br>
-                                                    <b>Rarely used:</b> Most changes in other params
-                                                    </div>
-                                                </div>
-                                            </span>
-                                        </span>
-                                        <span><span id="tex_gs_val">1.0</span></span>
-                                    </label>
-                                    <input type="range" id="tex_gs" min="0" max="5" step="0.1" value="1.0" oninput="updateVal('tex_gs')">
-                                </div>
-                                <div class="input-wrapper">
-                                    <label style="display: flex; justify-content: space-between; align-items: center;">
-                                        <span>Texture Sampling Steps
-                                            <span class="tooltip-icon" style="margin-left: 0.3rem;">?
-                                                <div class="tooltip-content">
-                                                    <strong>Texture Denoising Iterations</strong>
-                                                    Steps for material/PBR texture generation. Higher = more refined colors and materials.
-                                                    <div class="note">
-                                                    <b>6-12:</b> Basic colors (1-2s)<br>
-                                                    <b>12-24:</b> Detailed textures (2-4s)<br>
-                                                    <b>24-40:</b> High-quality materials (4-6s)<br>
-                                                    <b>Default 12:</b> Good balance
-                                                    </div>
-                                                </div>
-                                            </span>
-                                        </span>
-                                        <span><span id="tex_steps_val">12</span></span>
-                                    </label>
-                                    <input type="range" id="tex_steps" min="1" max="40" step="1" value="12" oninput="updateVal('tex_steps')">
-                                </div>
-                            </div>
-                        </div>
-                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0;">
+                    Extract Mesh (GLB)
                 </button>
                 <button class="btn btn-outline" id="download-btn" style="display: none; background: rgba(16, 185, 129, 0.1); border-color: var(--accent); color: var(--accent);">
                     <i data-lucide="download"></i>
@@ -1258,10 +1187,6 @@
                 // Reset mode tabs
                 document.querySelectorAll('.mode-tab').forEach(t => {
                     t.classList.toggle('active', t.textContent === 'Forest');
-            // Texture controls toggle
-            document.getElementById('show-texture-controls').onchange = (e) => {
-                document.getElementById('texture-controls').style.display = e.target.checked ? 'block' : 'none';
-            };
                 });
 
                 // Go back to step 1
@@ -1408,9 +1333,6 @@
                     ss_guidance_strength: parseFloat(document.getElementById('ss_gs').value),
                     ss_sampling_steps: parseInt(document.getElementById('ss_steps').value),
                     shape_slat_guidance_strength: parseFloat(document.getElementById('shape_gs').value),
-                    shape_slat_sampling_steps: parseInt(document.getElementById('shape_steps').value),
-                    tex_slat_guidance_strength: parseFloat(document.getElementById('tex_gs').value),
-                    tex_slat_sampling_steps: parseInt(document.getElementById('tex_steps').value),
                     manual_fov: (() => {
                         if (document.getElementById('fov-auto').checked) return -1.0;
                         const v = parseFloat(document.getElementById('manual-fov').value);

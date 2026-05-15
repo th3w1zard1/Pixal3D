@@ -1408,9 +1408,6 @@
                     ss_guidance_strength: parseFloat(document.getElementById('ss_gs').value),
                     ss_sampling_steps: parseInt(document.getElementById('ss_steps').value),
                     shape_slat_guidance_strength: parseFloat(document.getElementById('shape_gs').value),
-                    shape_slat_sampling_steps: parseInt(document.getElementById('shape_steps').value),
-                    tex_slat_guidance_strength: parseFloat(document.getElementById('tex_gs').value),
-                    tex_slat_sampling_steps: parseInt(document.getElementById('tex_steps').value),
                     manual_fov: (() => {
                         if (document.getElementById('fov-auto').checked) return -1.0;
                         const v = parseFloat(document.getElementById('manual-fov').value);
