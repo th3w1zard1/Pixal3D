@@ -368,6 +368,8 @@ def generate_3d(
     tex_slat_guidance_rescale: float = 0.0,
     tex_slat_sampling_steps: int = 12,
     tex_slat_rescale_t: float = 3.0,
+    manual_fov: float = -1.0,
+    fov_unit: str = "deg",
     session_id: str = "",
 ) -> Dict:
     init_models()
@@ -383,11 +385,28 @@ def generate_3d(
     temp_processed_path = os.path.join(TMP_DIR, f"temp_proc_{session_id[:8]}_{int(time.time()*1000)}.png")
     image_preprocessed.save(temp_processed_path)
     
-    camera_params = get_camera_params_wild_moge(
-        temp_processed_path, device="cuda",
-        mesh_scale=WILD_MESH_SCALE, extend_pixel=WILD_EXTEND_PIXEL,
-        image_resolution=WILD_IMAGE_RESOLUTION,
-    )
+    if manual_fov > 0:
+        # Convert to radians based on unit
+        if fov_unit == "rad":
+            camera_angle_x = float(manual_fov)
+            fov_deg = math.degrees(manual_fov)
+        else:
+            camera_angle_x = math.radians(manual_fov)
+            fov_deg = float(manual_fov)
+        grid_point = torch.tensor([-1.0, 0.0, 0.0])
+        distance = distance_from_fov(
+            camera_angle_x, grid_point,
+            torch.tensor([0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]),
+            WILD_MESH_SCALE, WILD_IMAGE_RESOLUTION
+        )["distance_from_x"]
+        camera_params = {'camera_angle_x': camera_angle_x, 'distance': distance, 'mesh_scale': WILD_MESH_SCALE}
+        print(f"[Camera] Using manual FOV: {fov_deg:.2f}° ({camera_angle_x:.4f} rad), distance: {distance:.4f}")
+    else:
+        camera_params = get_camera_params_wild_moge(
+            temp_processed_path, device="cuda",
+            mesh_scale=WILD_MESH_SCALE, extend_pixel=WILD_EXTEND_PIXEL,
+            image_resolution=WILD_IMAGE_RESOLUTION,
+        )
     _update_progress("Preprocessing & Camera Estimation", 1, 1)
     
     ss_sampler_override = {"steps": ss_sampling_steps, "guidance_strength": ss_guidance_strength,

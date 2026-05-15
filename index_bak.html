@@ -627,9 +627,6 @@
                     2. Click Extract GLB to export.<br>
                     3. Download the generated GLB file.
                 </p>
-                <p style="font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; margin-top: 0.5rem; opacity: 0.7;">
-                    Note: Camera estimated automatically via MoGe-2.
-                </p>
                 <a href="https://ldyang694.github.io/projects/pixal3d/" target="_blank" class="btn btn-outline" style="margin-top: 1rem; padding: 0.6rem 1rem; font-size: 0.85rem;">
                     <i data-lucide="globe" style="width: 16px;"></i>
                     Project Page
@@ -664,6 +661,32 @@
                                 <i data-lucide="rotate-cw" style="width: 16px;"></i>
                             </button>
                         </div>
+                    </div>
+                    <div class="input-wrapper">
+                        <p style="font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; opacity: 0.7;">
+                            Note: FOV is auto-estimated via MoGe-2.<br>
+                            If distortion occurs, try manual FOV.<br>
+                            Default <b style="color: var(--primary);">0.2 rad</b> generally works well.
+                        </p>
+                    </div>
+                    <div class="input-wrapper">
+                        <label>
+                            Camera FOV
+                            <span style="display: flex; align-items: center; gap: 0.35rem;">
+                                <input type="checkbox" id="fov-auto" checked style="accent-color: var(--primary); width: 14px; height: 14px; cursor: pointer;">
+                                <span style="font-size: 0.75rem; color: var(--text-dim); cursor: pointer;" onclick="document.getElementById('fov-auto').click()">Auto</span>
+                            </span>
+                        </label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="number" id="manual-fov" value="0.2" min="0.0175" max="2.9671" step="0.01" disabled style="opacity: 0.4; flex: 1;">
+                            <select id="fov-unit" disabled style="opacity: 0.4; width: 70px; padding: 0.5rem;">
+                                <option value="deg">deg</option>
+                                <option value="rad" selected>rad</option>
+                            </select>
+                        </div>
+                        <p id="fov-hint" style="font-size: 0.65rem; color: var(--text-dim); margin-top: 0.15rem;">
+                            Manual FOV in radians (0.02–2.97 rad)
+                        </p>
                     </div>
                 </div>
             </div>
@@ -944,6 +967,38 @@
                 updateFrame();
             };
 
+            // FOV auto toggle & unit switch
+            const fovAutoCheck = document.getElementById('fov-auto');
+            const fovInput = document.getElementById('manual-fov');
+            const fovUnit = document.getElementById('fov-unit');
+            const fovHint = document.getElementById('fov-hint');
+
+            function updateFovEnabled() {
+                const manual = !fovAutoCheck.checked;
+                fovInput.disabled = !manual;
+                fovUnit.disabled = !manual;
+                fovInput.style.opacity = manual ? '1' : '0.4';
+                fovUnit.style.opacity = manual ? '1' : '0.4';
+            }
+
+            fovAutoCheck.onchange = updateFovEnabled;
+
+            fovUnit.onchange = () => {
+                const val = parseFloat(fovInput.value);
+                if (isNaN(val)) return;
+                if (fovUnit.value === 'rad') {
+                    // deg -> rad
+                    fovInput.value = (val * Math.PI / 180).toFixed(4);
+                    fovInput.min = '0.0175'; fovInput.max = '2.9671'; fovInput.step = '0.01';
+                    fovHint.textContent = 'Manual FOV in radians (0.02–2.97 rad)';
+                } else {
+                    // rad -> deg
+                    fovInput.value = (val * 180 / Math.PI).toFixed(1);
+                    fovInput.min = '1'; fovInput.max = '170'; fovInput.step = '0.5';
+                    fovHint.textContent = 'Uncheck "Auto" to manually set FOV (1°–170°)';
+                }
+            };
+
             // Mode Grid
             const grid = document.getElementById('mode-grid');
             MODES.forEach(m => {
@@ -1037,6 +1092,11 @@
                     ss_guidance_strength: parseFloat(document.getElementById('ss_gs').value),
                     ss_sampling_steps: parseInt(document.getElementById('ss_steps').value),
                     shape_slat_guidance_strength: parseFloat(document.getElementById('shape_gs').value),
+                    manual_fov: (() => {
+                        if (document.getElementById('fov-auto').checked) return -1.0;
+                        const v = parseFloat(document.getElementById('manual-fov').value);
+                        return document.getElementById('fov-unit').value === 'rad' ? v * 180 / Math.PI : v;
+                    })(),
                     session_id: sessionId
                 };
 

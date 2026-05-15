@@ -256,28 +256,23 @@ from fastapi import Request
 PROGRESS_DIR = os.path.join(TMP_DIR, '_progress')
 os.makedirs(PROGRESS_DIR, exist_ok=True)
 
-_active_session_id = ""
-_active_session_lock = threading.Lock()
+_thread_local = threading.local()
 
 def _progress_file(session_id: str) -> str:
     """Return path to a session's progress JSON file."""
     return os.path.join(PROGRESS_DIR, f"{session_id}.json")
 
 def _reset_progress(session_id: str):
-    global _active_session_id
-    with _active_session_lock:
-        _active_session_id = session_id
+    _thread_local.active_session = session_id
     _write_progress_file(session_id, {"stage": "Initializing...", "step": 0, "total": 0, "done": False})
 
 def _update_progress(stage: str, step: int, total: int):
-    with _active_session_lock:
-        session_id = _active_session_id
+    session_id = getattr(_thread_local, 'active_session', '')
     if session_id:
         _write_progress_file(session_id, {"stage": stage, "step": step, "total": total, "done": False})
 
 def _finish_progress():
-    with _active_session_lock:
-        session_id = _active_session_id
+    session_id = getattr(_thread_local, 'active_session', '')
     if session_id:
         _write_progress_file(session_id, {"done": True})
 
@@ -495,4 +490,4 @@ if __name__ == "__main__":
     # Pre-initialize models before launching the server
     init_models()
     
-    app.launch(show_error=True, share=True,server_port=8123)
+    app.launch(show_error=True, share=True)
