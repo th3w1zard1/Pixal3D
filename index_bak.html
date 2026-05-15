@@ -864,6 +864,7 @@
         let currentFile = null;
         let preprocessedFile = null;
         let isPreprocessing = false;
+        let runtimePrimed = false;
         let generationResult = null;
         let currentMode = "shaded_forest";
         let currentFrame = 0;
@@ -918,7 +919,9 @@
             document.getElementById('clear-btn').onclick = () => {
                 // Reset state
                 currentFile = null;
+                preprocessedFile = null;
                 generationResult = null;
+                runtimePrimed = false;
                 currentFrame = 0;
                 currentMode = "shaded_forest";
 
@@ -1050,6 +1053,20 @@
             document.getElementById('generate-btn').disabled = false;
         }
 
+        async function ensureRuntimePrimed() {
+            if (runtimePrimed) return;
+
+            startProgressListener();
+            try {
+                await client.predict("/warmup_runtime", { session_id: sessionId });
+                runtimePrimed = true;
+                stopProgressListener();
+            } catch (err) {
+                stopProgressListener();
+                throw err;
+            }
+        }
+
         function setStep(num) {
             currentStep = num;
             document.querySelectorAll('.step-item').forEach((item, i) => {
@@ -1083,8 +1100,9 @@
             setStep(1);
 
             showLoading();
-            startProgressListener();
             try {
+                await ensureRuntimePrimed();
+                startProgressListener();
                 const params = {
                     image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
                     seed: parseInt(document.getElementById('seed').value),

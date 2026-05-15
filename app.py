@@ -476,9 +476,9 @@ def generation_gpu_duration(
     fov_unit: str = "deg",
     session_id: str = "",
 ) -> int:
-    # Hosted ZeroGPU currently rejects requests above 240s outright,
-    # so clamp both quality tiers to that hard cap.
-    return 240
+    # Keep synthesis inside the hosted ZeroGPU per-call limit; cold model
+    # initialization is handled separately by `warmup_runtime`.
+    return 120
 
 
 def extract_glb_gpu_duration(
@@ -487,9 +487,7 @@ def extract_glb_gpu_duration(
     texture_size: int,
     session_id: str = "",
 ) -> int:
-    # Extraction is substantially lighter than synthesis, so keep the
-    # request small enough to fit after a full 1024 generation pass.
-    return 30
+    return 60
 
 # ============================================================================
 # API Implementation
@@ -530,6 +528,23 @@ def preprocess(image: FileData) -> FileData:
     out_path = os.path.join(TMP_DIR, f"preprocessed_{int(time.time()*1000)}.png")
     processed.save(out_path)
     return FileData(path=out_path)
+
+@app.api()
+@spaces.GPU(duration=120)
+def warmup_runtime(session_id: str = "") -> Dict:
+    _reset_progress(session_id)
+    stage = "Preparing runtime"
+    try:
+        _update_progress(stage, 0, 2)
+        ensure_runtime_ready()
+        stage = "Installing progress hooks"
+        _update_progress(stage, 1, 2)
+        install_progress_hooks()
+        _finish_progress()
+        return runtime_state.snapshot()
+    except Exception as exc:
+        _fail_progress(stage, exc)
+        raise
 
 @app.api()
 @spaces.GPU(duration=generation_gpu_duration)
