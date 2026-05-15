@@ -476,9 +476,9 @@ def generation_gpu_duration(
     fov_unit: str = "deg",
     session_id: str = "",
 ) -> int:
-    # Keep synthesis inside the hosted ZeroGPU per-call limit; cold model
+    # Keep synthesis inside a small post-warmup ZeroGPU slice; cold model
     # initialization is handled separately by `warmup_runtime`.
-    return 120
+    return 60
 
 
 def extract_glb_gpu_duration(
