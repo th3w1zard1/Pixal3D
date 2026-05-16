@@ -71,3 +71,65 @@ See [RUNTIME_FALLBACK_POLICY.md](RUNTIME_FALLBACK_POLICY.md) for the full rulebo
 - Hosted Spaces default to lazy GPU initialization; set `PIXAL3D_WARMUP_ON_START=1` only if you explicitly want startup warmup
 - `GRADIO_SHARE=1` to enable Gradio share links outside the hosted Space runtime
 - `HF_TOKEN` only if you intentionally need authenticated Hugging Face Hub access for other assets
+
+## GitHub automation
+
+This repo now carries three GitHub Actions workflows under `.github/workflows/`:
+
+- `python-ci.yml` runs a hosted-runner-safe validation slice on pull requests and pushes to `main`
+- `release.yml` publishes GitHub release assets for tagged builds and supports manual draft releases
+- `sync-hf-space.yml` mirrors this repository to a Hugging Face Space after a preflight token and target check
+
+### CI scope
+
+The CI workflow is intentionally CPU-safe and lightweight.
+
+It currently validates:
+
+- Ruff functional checks on `runtime_policy.py`, `space_bootstrap.py`, `space_runtime.py`, `scripts/`, and `tests/`
+- syntax compilation for the core app and runtime files
+- `python -m unittest discover tests -p "test_*.py" -v`
+
+It intentionally does not validate:
+
+- CUDA-only dependencies from the runtime requirements files
+- heavyweight model downloads
+- end-to-end inference or GPU kernels on GitHub-hosted runners
+
+### Release behavior
+
+The release workflow does not currently publish Python distribution artifacts. Even though the repo now has a `pyproject.toml` configuration hub, releases are still repository-centric rather than package-centric.
+
+Instead it publishes:
+
+- a Git source archive
+- a working-tree bundle suitable for repo and Space handoff
+- `release-metadata.json` with the release tag, commit SHA, Python version, and runtime references
+
+Manual releases default to draft mode. If no manual tag is provided, the workflow falls back to `manual-<run_number>`.
+
+### Hugging Face Space sync
+
+The sync workflow defaults to the current public Space target:
+
+- `th3w1zard1/Pixal3D`
+
+You can override that target in GitHub repository settings with either:
+
+- `HF_SPACE_REPO_ID`
+- or the pair `HF_SPACE_NAMESPACE` and `HF_SPACE_NAME`
+
+Other supported repository variables:
+
+- `HF_SPACE_SDK` to override the Space SDK, default `gradio`
+- `HF_SPACE_AUTO_SYNC=true` to allow pushes to `main` to mirror automatically
+
+Required secret:
+
+- `HF_TOKEN`
+
+Recommended rollout path:
+
+1. Add `HF_TOKEN` and any intended `HF_SPACE_*` variables.
+2. Manually dispatch `sync-hf-space.yml` with `create_if_missing=false` first.
+3. Enable `HF_SPACE_AUTO_SYNC=true` only after the manual run succeeds.

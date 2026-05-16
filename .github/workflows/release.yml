@@ -1,0 +1,96 @@
+name: Release Pixal3D Artifacts
+
+on:
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            tag_name:
+                description: Optional tag name for manual releases.
+                required: false
+                type: string
+
+permissions:
+    contents: write
+
+jobs:
+    build-and-release:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+                  lfs: true
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: "3.12"
+            - name: Resolve release labels
+              id: labels
+              env:
+                  INPUT_TAG_NAME: ${{ github.event.inputs.tag_name || '' }}
+              run: |
+                  if [[ -n "$INPUT_TAG_NAME" ]]; then
+                    tag_name="$INPUT_TAG_NAME"
+                  elif [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+                    tag_name="$GITHUB_REF_NAME"
+                  else
+                    tag_name="manual-${GITHUB_RUN_NUMBER}"
+                  fi
+                  asset_label="${tag_name//\//-}"
+                  echo "tag_name=$tag_name" >> "$GITHUB_OUTPUT"
+                  echo "asset_label=$asset_label" >> "$GITHUB_OUTPUT"
+            - name: Create release metadata
+              env:
+                  ASSET_LABEL: ${{ steps.labels.outputs.asset_label }}
+                  RELEASE_TAG: ${{ steps.labels.outputs.tag_name }}
+              run: |
+                  mkdir -p dist
+                  python - <<'PY'
+                  import json
+                  import os
+                  from datetime import datetime, timezone
+
+                  payload = {
+                      "project": "Pixal3D",
+                      "release_tag": os.environ["RELEASE_TAG"],
+                      "asset_label": os.environ["ASSET_LABEL"],
+                      "git_sha": os.environ["GITHUB_SHA"],
+                      "python_version": "3.12",
+                      "app_file": "app.py",
+                      "runtime_policy_file": "RUNTIME_FALLBACK_POLICY.md",
+                      "created_at": datetime.now(timezone.utc).isoformat(),
+                  }
+
+                  with open("dist/release-metadata.json", "w", encoding="utf-8") as handle:
+                      json.dump(payload, handle, indent=2)
+                      handle.write("\n")
+                  PY
+            - name: Create source archive
+              env:
+                  ASSET_LABEL: ${{ steps.labels.outputs.asset_label }}
+              run: >-
+                  git archive
+                  --format=tar.gz
+                  --output="dist/pixal3d-source-${ASSET_LABEL}.tar.gz"
+                  HEAD
+            - name: Create workspace bundle
+              env:
+                  ASSET_LABEL: ${{ steps.labels.outputs.asset_label }}
+              run: |
+                  tar \
+                    --exclude=.git \
+                    --exclude=.venv \
+                    --exclude=.mypy_cache \
+                    --exclude=.history \
+                    --exclude=dist \
+                    --exclude=__pycache__ \
+                    -czf "dist/pixal3d-workspace-${ASSET_LABEL}.tar.gz" \
+                    .
+            - name: Publish GitHub release assets
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ steps.labels.outputs.tag_name }}
+                  target_commitish: ${{ github.sha }}
+                  draft: ${{ github.event_name == 'workflow_dispatch' }}
+                  files: dist/*
