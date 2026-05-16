@@ -332,11 +332,20 @@ def resolve_pipeline_source(model_path: str) -> str:
     return resolved_pipeline_dir
 
 
-def initialize_runtime():
-    run_initialization(runtime_state, init_models)
+def resolve_runtime_init_device(preferred_device: str | None = None) -> str:
+    if preferred_device:
+        return _normalize_device(preferred_device).type
+    return primary_execution_device(os.environ, torch.cuda.is_available())
 
 
-def ensure_runtime_ready():
+def initialize_runtime(preferred_device: str | None = None):
+    run_initialization(
+        runtime_state,
+        lambda: init_models(preferred_device=preferred_device),
+    )
+
+
+def ensure_runtime_ready(preferred_device: str | None = None):
     global warmup_thread
     if runtime_state.snapshot()["ready"]:
         return
@@ -344,7 +353,7 @@ def ensure_runtime_ready():
         warmup_thread.join()
         if runtime_state.snapshot()["ready"]:
             return
-    initialize_runtime()
+    initialize_runtime(preferred_device=preferred_device)
 
 
 def start_runtime_warmup():
@@ -359,13 +368,14 @@ def start_runtime_warmup():
     return warmup_thread
 
 
-def init_models():
+def init_models(preferred_device: str | None = None):
     global pipeline, moge_model, envmap, current_runtime_device
     with init_lock:
         if pipeline is not None:
             return
-        initial_device = primary_execution_device(os.environ, torch.cuda.is_available())
+        initial_device = resolve_runtime_init_device(preferred_device)
         normalized_initial_device = _normalize_device(initial_device)
+        cuda_runtime_available = initial_device == "cuda" and torch.cuda.is_available()
         # GPU / CUDA Diagnostics (runs when GPU is allocated)
         import subprocess as _sp
 
@@ -374,8 +384,9 @@ def init_models():
 
         print("=" * 60)
         print("[Diagnostics] PyTorch version:", torch.__version__)
-        print("[Diagnostics] CUDA available:", torch.cuda.is_available())
-        if torch.cuda.is_available():
+        print("[Diagnostics] Runtime init device:", initial_device)
+        print("[Diagnostics] CUDA available:", cuda_runtime_available)
+        if cuda_runtime_available:
             print("[Diagnostics] CUDA version:", torch.version.cuda)
             print("[Diagnostics] cuDNN version:", torch.backends.cudnn.version())
             for i in range(torch.cuda.device_count()):
@@ -385,20 +396,20 @@ def init_models():
                 print(
                     f"[Diagnostics] GPU {i}: {name}, sm_{cap[0]}{cap[1]}, {mem:.1f} GB"
                 )
-        try:
-            res = _sp.run(
-                [
-                    "nvidia-smi",
-                    "--query-gpu=name,compute_cap,memory.total",
-                    "--format=csv,noheader",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            print("[Diagnostics] nvidia-smi:", res.stdout.strip())
-        except Exception as e:
-            print(f"[Diagnostics] nvidia-smi failed: {e}")
+            try:
+                res = _sp.run(
+                    [
+                        "nvidia-smi",
+                        "--query-gpu=name,compute_cap,memory.total",
+                        "--format=csv,noheader",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                print("[Diagnostics] nvidia-smi:", res.stdout.strip())
+            except Exception as e:
+                print(f"[Diagnostics] nvidia-smi failed: {e}")
         print("=" * 60)
 
         model_path = "TencentARC/Pixal3D-T"
@@ -822,7 +833,7 @@ def _generate_3d_impl(
     _reset_progress(session_id)
     try:
         _update_progress(stage, 0, 2)
-        ensure_runtime_ready()
+        ensure_runtime_ready(preferred_device=execution_device)
         move_runtime_to(execution_device)
         stage = "Installing progress hooks"
         _update_progress(stage, 1, 2)
@@ -959,7 +970,7 @@ def _extract_glb_impl(
 ) -> FileData:
     stage = "Preparing runtime"
     try:
-        ensure_runtime_ready()
+        ensure_runtime_ready(preferred_device=execution_device)
         move_runtime_to(execution_device)
         install_progress_hooks()
     except Exception as exc:
