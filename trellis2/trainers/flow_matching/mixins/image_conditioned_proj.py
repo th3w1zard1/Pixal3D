@@ -485,15 +485,17 @@ class DinoV3ProjFeatureExtractor(nn.Module):
             - proj_features: [B, grid_resolution³, proj_channels]
               where proj_channels = embed_dim (no NAF) or embed_dim*2 (with NAF)
         """
+        device = next(self.model.parameters()).device
         # Handle input types
         if isinstance(image, torch.Tensor):
             assert image.ndim == 4, "Image tensor should be batched (B, C, H, W)"
+            image = image.to(device)
         elif isinstance(image, list):
             assert all(isinstance(i, Image.Image) for i in image), "Image list should be list of PIL images"
             image = [i.resize((self.image_size, self.image_size), Image.LANCZOS) for i in image]
             image = [np.array(i.convert('RGB')).astype(np.float32) / 255 for i in image]
             image = [torch.from_numpy(i).permute(2, 0, 1).float() for i in image]
-            image = torch.stack(image).cuda()
+            image = torch.stack(image).to(device)
         else:
             raise ValueError(f"Unsupported type of image: {type(image)}")
         
@@ -748,15 +750,17 @@ class DinoV3VaeProjFeatureExtractor(nn.Module):
             - proj_semantic: [B, grid_res³, embed_dim] (DINOv3 projected features)
             - proj_color: [B, grid_res³, vae_channels] (VAE projected features)
         """
+        device = next(self.dino_model.parameters()).device
         # Handle input types
         if isinstance(image, torch.Tensor):
             assert image.ndim == 4
+            image = image.to(device)
         elif isinstance(image, list):
             assert all(isinstance(i, Image.Image) for i in image)
             image = [i.resize((self.image_size, self.image_size), Image.LANCZOS) for i in image]
             image = [np.array(i.convert('RGB')).astype(np.float32) / 255 for i in image]
             image = [torch.from_numpy(i).permute(2, 0, 1).float() for i in image]
-            image = torch.stack(image).cuda()
+            image = torch.stack(image).to(device)
         else:
             raise ValueError(f"Unsupported type of image: {type(image)}")
         
