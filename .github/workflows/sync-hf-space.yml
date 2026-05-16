@@ -68,6 +68,7 @@ jobs:
                   HF_SPACE_NAME: ${{ github.event.inputs.hf_space_name || vars.HF_SPACE_NAME }}
                   HF_SPACE_NAMESPACE: ${{ github.event.inputs.hf_space_namespace || vars.HF_SPACE_NAMESPACE }}
                   HF_SPACE_SDK: ${{ steps.resolve.outputs.space_sdk }}
+                  HF_SPACE_PRIVATE: ${{ vars.HF_SPACE_PRIVATE || 'false' }}
                   HF_SPACE_CREATE_IF_MISSING: ${{ github.event.inputs.create_if_missing || 'true' }}
               run: python scripts/ensure_hf_space.py
 
@@ -87,3 +88,4 @@ jobs:
                   huggingface_repo_id: ${{ needs.preflight.outputs.repo_id }}
                   hf_token: ${{ secrets.HF_TOKEN }}
                   space_sdk: ${{ needs.preflight.outputs.space_sdk }}
+                  private: ${{ vars.HF_SPACE_PRIVATE || 'false' }}

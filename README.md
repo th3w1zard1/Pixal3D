@@ -127,6 +127,7 @@ You can override that target in GitHub repository settings with either:
 Other supported repository variables:
 
 - `HF_SPACE_SDK` to override the Space SDK, default `gradio`
+- `HF_SPACE_PRIVATE=true` to create or preserve a private Space target during preflight and mirror setup
 - `HF_SPACE_AUTO_SYNC=true` to allow pushes to `main` to mirror automatically
 
 Required secret:
