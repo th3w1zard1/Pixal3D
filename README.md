@@ -119,7 +119,7 @@ The sync workflow defaults to the current public Space target:
 
 - `th3w1zard1/Pixal3D`
 
-You can override that target in GitHub repository settings with either:
+You can override that target permanently in GitHub repository settings with either:
 
 - `HF_SPACE_REPO_ID`
 - or the pair `HF_SPACE_NAMESPACE` and `HF_SPACE_NAME`
@@ -129,6 +129,13 @@ Other supported repository variables:
 - `HF_SPACE_SDK` to override the Space SDK, default `gradio`
 - `HF_SPACE_PRIVATE=true` to create or preserve a private Space target during preflight and mirror setup
 - `HF_SPACE_AUTO_SYNC=true` to allow pushes to `main` to mirror automatically
+
+For one-off manual runs, `sync-hf-space.yml` also accepts these workflow inputs:
+
+- `hf_space_repo_id`, or `hf_space_namespace` plus `hf_space_name`
+- `hf_space_sdk`
+- `hf_space_private`
+- `create_if_missing`
 
 Required secret:
 
