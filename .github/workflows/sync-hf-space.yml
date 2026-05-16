@@ -33,6 +33,7 @@ jobs:
         runs-on: ubuntu-latest
         outputs:
             repo_id: ${{ steps.resolve.outputs.repo_id }}
+            space_sdk: ${{ steps.resolve.outputs.space_sdk }}
         steps:
             - name: Validate Hugging Face token secret
               env:
@@ -85,3 +86,4 @@ jobs:
                   github_repo_id: ${{ github.repository }}
                   huggingface_repo_id: ${{ needs.preflight.outputs.repo_id }}
                   hf_token: ${{ secrets.HF_TOKEN }}
+                  space_sdk: ${{ needs.preflight.outputs.space_sdk }}

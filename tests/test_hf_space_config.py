@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 
 class HuggingFaceSpaceConfigTests(unittest.TestCase):
@@ -52,6 +53,78 @@ class HuggingFaceSpaceConfigTests(unittest.TestCase):
 
 
 class HuggingFaceSpaceEnsureTests(unittest.TestCase):
+    def test_ensure_space_returns_false_when_space_exists(self):
+        from scripts.ensure_hf_space import ensure_space
+
+        api = Mock()
+
+        created = ensure_space(api, "custom-org/custom-space", "gradio")
+
+        self.assertFalse(created)
+        api.repo_info.assert_called_once_with(
+            repo_id="custom-org/custom-space",
+            repo_type="space",
+        )
+        api.create_repo.assert_not_called()
+
+    def test_ensure_space_creates_repo_after_not_found(self):
+        from scripts.ensure_hf_space import ensure_space
+
+        api = Mock()
+        response = type("Response", (), {"status_code": 404})()
+        api.repo_info.side_effect = Exception("missing")
+        api.repo_info.side_effect.response = response
+
+        created = ensure_space(
+            api,
+            "custom-org/custom-space",
+            "docker",
+            private=True,
+            create_if_missing=True,
+        )
+
+        self.assertTrue(created)
+        api.create_repo.assert_called_once_with(
+            repo_id="custom-org/custom-space",
+            repo_type="space",
+            private=True,
+            exist_ok=True,
+            space_sdk="docker",
+        )
+
+    def test_ensure_space_raises_forbidden_as_permission_error(self):
+        from scripts.ensure_hf_space import ensure_space
+
+        api = Mock()
+        response = type("Response", (), {"status_code": 403})()
+        error = Exception("forbidden")
+        error.response = response
+        api.repo_info.side_effect = error
+
+        with self.assertRaisesRegex(RuntimeError, "verify HF_TOKEN permissions"):
+            ensure_space(api, "custom-org/custom-space", "gradio")
+
+        api.create_repo.assert_not_called()
+
+    def test_ensure_space_raises_when_missing_and_creation_disabled(self):
+        from scripts.ensure_hf_space import ensure_space
+
+        api = Mock()
+        response = type("Response", (), {"status_code": 404})()
+        error = Exception("missing")
+        error.response = response
+        api.repo_info.side_effect = error
+
+        with self.assertRaisesRegex(RuntimeError, "Space does not exist"):
+            ensure_space(
+                api,
+                "custom-org/custom-space",
+                "gradio",
+                create_if_missing=False,
+            )
+
+        api.create_repo.assert_not_called()
+
     def test_resolve_ensure_settings_requires_token(self):
         from scripts.ensure_hf_space import resolve_ensure_settings
 
