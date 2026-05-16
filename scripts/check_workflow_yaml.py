@@ -16,7 +16,9 @@ WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 
 
 def iter_workflow_files() -> list[Path]:
-    files = {path for pattern in ("*.yml", "*.yaml") for path in WORKFLOWS_DIR.glob(pattern)}
+    files = {
+        path for pattern in ("*.yml", "*.yaml") for path in WORKFLOWS_DIR.glob(pattern)
+    }
     return sorted(files)
 
 
@@ -26,7 +28,9 @@ def validate_workflow_file(path: Path) -> None:
             list(yaml.safe_load_all(workflow_file))
         except yaml.YAMLError as error:
             relative_path = path.relative_to(REPO_ROOT)
-            raise RuntimeError(f"Invalid workflow YAML in {relative_path}: {error}") from error
+            raise RuntimeError(
+                f"Invalid workflow YAML in {relative_path}: {error}"
+            ) from error
 
 
 def main() -> int:

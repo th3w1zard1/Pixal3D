@@ -630,7 +630,9 @@ def build_camera_params_from_fov(camera_angle_x: float, fov_label: str) -> dict:
     distance = distance_from_fov(
         camera_angle_x,
         grid_point,
-        torch.tensor([0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]),
+        torch.tensor(
+            [0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]
+        ),
         WILD_MESH_SCALE,
         WILD_IMAGE_RESOLUTION,
     )["distance_from_x"]
