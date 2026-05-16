@@ -145,6 +145,68 @@
             color: inherit;
         }
 
+        .runtime-policy-card {
+            background: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 0.95rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+        }
+
+        .runtime-policy-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.75rem;
+        }
+
+        .runtime-metric span {
+            display: block;
+            font-size: 0.66rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.25rem;
+        }
+
+        .runtime-metric strong {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.35;
+        }
+
+        .runtime-order {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+
+        .runtime-chip {
+            border-radius: 999px;
+            border: 1px solid rgba(129, 140, 248, 0.22);
+            background: rgba(129, 140, 248, 0.08);
+            color: #c7d2fe;
+            padding: 0.32rem 0.55rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+        }
+
+        .runtime-chip.active {
+            border-color: rgba(16, 185, 129, 0.4);
+            background: rgba(16, 185, 129, 0.15);
+            color: #86efac;
+        }
+
+        .runtime-note {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            line-height: 1.55;
+        }
+
         .steps-nav {
             display: flex;
             gap: 2rem;
@@ -797,6 +859,34 @@
             </div>
 
             <div class="sidebar-section">
+                <h3 style="display: flex; align-items: center;"><i data-lucide="server"
+                        style="width: 14px;"></i> Runtime Policy</h3>
+                <div class="runtime-policy-card">
+                    <div class="runtime-policy-grid">
+                        <div class="runtime-metric">
+                            <span>Branch</span>
+                            <strong id="runtime-branch">Loading...</strong>
+                        </div>
+                        <div class="runtime-metric">
+                            <span>Active Stage</span>
+                            <strong id="runtime-stage">Loading...</strong>
+                        </div>
+                        <div class="runtime-metric">
+                            <span>Primary</span>
+                            <strong id="runtime-primary">Loading...</strong>
+                        </div>
+                        <div class="runtime-metric">
+                            <span>Fallback</span>
+                            <strong id="runtime-fallback">Loading...</strong>
+                        </div>
+                    </div>
+                    <div class="runtime-order" id="runtime-order"></div>
+                    <p class="runtime-note" id="runtime-summary">Loading runtime policy...</p>
+                    <p class="runtime-note" id="runtime-boundary"></p>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
                 <h3 style="display: flex; align-items: center;"><i data-lucide="sliders-horizontal"
                         style="width: 14px;"></i> Base Settings</h3>
                 <div class="control-group">
@@ -1238,6 +1328,8 @@
         let generationResult = null;
         let currentMode = "shaded_forest";
         let currentFrame = 0;
+        let runtimePolicy = null;
+        let runtimeStage = "";
         const sessionId = crypto.randomUUID();
         let currentStep = 1;
 
@@ -1274,12 +1366,82 @@
             setInterval(pollQueue, 3000);
         }
 
+        function runtimeRuleLabel(ruleKey) {
+            if (!ruleKey) return 'Unavailable';
+            const match = runtimePolicy?.rules?.find((rule) => rule.key === ruleKey);
+            return match?.label || ruleKey.replace(/_/g, ' ');
+        }
+
+        function currentCpuRuleKey() {
+            if (!runtimePolicy) return 'space_cpu';
+            if (runtimePolicy.primary_runtime_key === 'local_cpu') return 'local_cpu';
+            return runtimePolicy.fallback_runtime_key || runtimePolicy.primary_runtime_key;
+        }
+
+        function markRuntimeStage(ruleKey) {
+            runtimeStage = ruleKey || '';
+            renderRuntimePolicy();
+        }
+
+        function renderRuntimePolicy() {
+            const branchEl = document.getElementById('runtime-branch');
+            const stageEl = document.getElementById('runtime-stage');
+            const primaryEl = document.getElementById('runtime-primary');
+            const fallbackEl = document.getElementById('runtime-fallback');
+            const summaryEl = document.getElementById('runtime-summary');
+            const boundaryEl = document.getElementById('runtime-boundary');
+            const orderEl = document.getElementById('runtime-order');
+
+            if (!runtimePolicy) {
+                branchEl.textContent = 'Unavailable';
+                stageEl.textContent = 'Unavailable';
+                primaryEl.textContent = 'Unavailable';
+                fallbackEl.textContent = 'Unavailable';
+                summaryEl.textContent = 'Runtime policy could not be loaded.';
+                boundaryEl.textContent = '';
+                orderEl.innerHTML = '';
+                return;
+            }
+
+            const activeStage = runtimeStage || runtimePolicy.primary_runtime_key;
+            branchEl.textContent = runtimePolicy.runtime_policy_branch === 'space' ? 'Hosted Space' : 'Local Run';
+            stageEl.textContent = runtimeRuleLabel(activeStage);
+            primaryEl.textContent = runtimeRuleLabel(runtimePolicy.primary_runtime_key);
+            fallbackEl.textContent = runtimePolicy.fallback_runtime_key
+                ? runtimeRuleLabel(runtimePolicy.fallback_runtime_key)
+                : 'None';
+            summaryEl.textContent = runtimePolicy.runtime_policy_summary;
+            boundaryEl.textContent = runtimePolicy.runtime_policy_boundary_note;
+
+            orderEl.innerHTML = '';
+            for (const ruleKey of runtimePolicy.runtime_policy_active_order || []) {
+                const chip = document.createElement('span');
+                chip.className = `runtime-chip${ruleKey === activeStage ? ' active' : ''}`;
+                chip.textContent = runtimeRuleLabel(ruleKey);
+                orderEl.appendChild(chip);
+            }
+        }
+
+        async function loadRuntimePolicy() {
+            const resp = await fetch('/runtime-policy');
+            if (!resp.ok) throw new Error('Failed to load runtime policy');
+            runtimePolicy = await resp.json();
+            runtimeStage = runtimePolicy.primary_runtime_key || '';
+            renderRuntimePolicy();
+        }
+
         async function init() {
             lucide.createIcons();
             startQueuePolling();
             try {
                 client = await Client.connect(window.location.origin);
                 setupUI();
+                try {
+                    await loadRuntimePolicy();
+                } catch (policyErr) {
+                    console.error("Runtime policy load failed:", policyErr);
+                    renderRuntimePolicy();
+                }
                 loadSamples();
             } catch (err) {
                 console.error("Connection error:", err);
@@ -1542,14 +1704,18 @@
         }
 
         async function runCpuGenerationFallback(params) {
+            const endpoint = runtimePolicy?.generation_fallback_endpoint || "/generate_3d_cpu_fallback";
+            markRuntimeStage(currentCpuRuleKey());
             showToast("GPU quota exhausted. Switching to CPU fallback...");
-            const result = await client.predict("/generate_3d_cpu_fallback", params);
+            const result = await client.predict(endpoint, params);
             return firstResultData(result);
         }
 
         async function runCpuExtractionFallback(params) {
+            const endpoint = runtimePolicy?.extraction_fallback_endpoint || "/extract_glb_api_cpu_fallback";
+            markRuntimeStage(currentCpuRuleKey());
             showToast("GPU quota exhausted during extraction. Switching to CPU geometry export...");
-            const result = await client.predict("/extract_glb_api_cpu_fallback", params);
+            const result = await client.predict(endpoint, params);
             return firstResultData(result);
         }
 
@@ -1567,9 +1733,11 @@
 
             // Stay on step 1 during generation
             setStep(1);
+            markRuntimeStage(runtimePolicy?.primary_runtime_key || 'zerogpu');
 
             showLoading();
             startProgressListener();
+            const generationEndpoint = runtimePolicy?.generation_primary_endpoint || "/generate_3d";
             const params = {
                 image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
                 seed: parseInt(document.getElementById('seed').value),
@@ -1591,7 +1759,7 @@
             try {
                 // Register in queue immediately (before Gradio dispatch delay)
                 await fetch(`/queue/join?session_id=${sessionId}`);
-                const result = await client.predict("/generate_3d", params);
+                const result = await client.predict(generationEndpoint, params);
                 generationResult = firstResultData(result);
             } catch (err) {
                 console.error(err);
@@ -1624,6 +1792,7 @@
             updateCameraInfo(generationResult);
 
             if (generationResult?.fallback_mode === 'cpu' && generationResult?.fallback_glb_path) {
+                markRuntimeStage(currentCpuRuleKey());
                 const glbUrl = getFileUrl(generationResult.fallback_glb_path);
                 await loadViewerModel(glbUrl, 3);
                 hideLoading();
@@ -1631,6 +1800,7 @@
                 return;
             }
 
+            markRuntimeStage(runtimePolicy?.primary_runtime_key || 'zerogpu');
             populateFrames(generationResult.render_paths);
             setStep(2);
             hideLoading();
@@ -1811,6 +1981,8 @@
 
             showLoading();
             startProgressListener();
+            markRuntimeStage(runtimePolicy?.primary_runtime_key || 'zerogpu');
+            const extractionEndpoint = runtimePolicy?.extraction_primary_endpoint || "/extract_glb_api";
             const params = {
                 state_path: generationResult.state_path,
                 decimation_target: parseInt(document.getElementById('decimation').value),
@@ -1821,7 +1993,7 @@
             try {
                 // Register in queue immediately (before Gradio dispatch delay)
                 await fetch(`/queue/join?session_id=${sessionId}`);
-                const result = await client.predict("/extract_glb_api", params);
+                const result = await client.predict(extractionEndpoint, params);
                 const glbUrl = getFileUrl(firstResultData(result));
 
                 stopProgressListener();

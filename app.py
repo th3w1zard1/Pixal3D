@@ -1,22 +1,18 @@
-import os
-import subprocess
-import argparse
-import math
-import time
-import shutil
-import cv2
-import torch
-import numpy as np
-import base64
-import io
-import json
-import traceback
-from datetime import datetime
-from typing import *
-from PIL import Image
+from __future__ import annotations
 
+import json
+import math
+import os
 import threading
+import time
+import traceback
 from contextlib import contextmanager
+from typing import *
+
+import cv2
+import numpy as np
+import torch
+from PIL import Image
 
 try:
     import nest_asyncio
@@ -58,10 +54,18 @@ except ImportError:
             return decorator
 
     spaces = _FakeSpaces()
-from gradio import Server
-from gradio.data_classes import FileData
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from gradio import Server
+from gradio.data_classes import FileData
+
+from runtime_policy import (
+    build_runtime_policy_payload,
+    primary_execution_device,
+    resolve_extraction_plan,
+    resolve_generation_plan,
+    runtime_rule_reason,
+)
 from space_bootstrap import build_runtime_config, prepare_pipeline_directory
 from space_runtime import (
     ModelInitState,
@@ -177,7 +181,7 @@ resolved_pipeline_dir = None
 runtime_state = ModelInitState()
 warmup_thread = None
 preprocess_lock = threading.Lock()
-current_runtime_device = "cuda"
+current_runtime_device = primary_execution_device(os.environ, torch.cuda.is_available())
 
 
 def _default_dense_attn_backend() -> str:
@@ -281,9 +285,15 @@ def is_zerogpu_quota_error(exc: Exception) -> bool:
     return "zerogpu quota" in text or "exceeded your zerogpu quota" in text
 
 
-def build_cpu_fallback_error(gpu_exc: Exception, cpu_exc: Exception) -> str:
+def build_cpu_fallback_error(
+    cpu_exc: Exception,
+    fallback_rule_key: str = "space_cpu",
+    trigger_message: str = "The primary runtime path failed",
+) -> str:
+    fallback_name = fallback_rule_key.replace("_", " ")
     return (
-        "ZeroGPU quota was exhausted, so Pixal3D attempted CPU fallback. "
+        f"{trigger_message}, so Pixal3D attempted the {fallback_name} path. "
+        f"{runtime_rule_reason(fallback_rule_key)} "
         "This build still depends on GPU-only sparse kernels for full 3D generation, "
         f"so the CPU retry could not complete: {type(cpu_exc).__name__}: {cpu_exc}"
     )
@@ -354,11 +364,13 @@ def init_models():
     with init_lock:
         if pipeline is not None:
             return
-        from trellis2.pipelines import Pixal3DImageTo3DPipeline
-        from trellis2.renderers import EnvMap
-
+        initial_device = primary_execution_device(os.environ, torch.cuda.is_available())
+        normalized_initial_device = _normalize_device(initial_device)
         # GPU / CUDA Diagnostics (runs when GPU is allocated)
         import subprocess as _sp
+
+        from trellis2.pipelines import Pixal3DImageTo3DPipeline
+        from trellis2.renderers import EnvMap
 
         print("=" * 60)
         print("[Diagnostics] PyTorch version:", torch.__version__)
@@ -394,7 +406,7 @@ def init_models():
         pipeline = Pixal3DImageTo3DPipeline.from_pretrained(
             resolve_pipeline_source(model_path)
         )
-        _set_dense_attention_backend("cuda")
+        _set_dense_attention_backend(initial_device)
 
         print("[ImageCond] Building DinoV3ProjFeatureExtractor models...")
         pipeline.image_cond_model_ss = build_image_cond_model(IMAGE_COND_CONFIGS["ss"])
@@ -409,13 +421,20 @@ def init_models():
         )
 
         pipeline.low_vram = False
-        pipeline.cuda()
+        if initial_device == "cuda":
+            pipeline.cuda()
+        else:
+            pipeline.cpu()
 
-        # Ensure image_cond_models are on GPU
-        pipeline.image_cond_model_ss.cuda()
-        pipeline.image_cond_model_shape_512.cuda()
-        pipeline.image_cond_model_shape_1024.cuda()
-        pipeline.image_cond_model_tex_1024.cuda()
+        for attr in [
+            "image_cond_model_ss",
+            "image_cond_model_shape_512",
+            "image_cond_model_shape_1024",
+            "image_cond_model_tex_1024",
+        ]:
+            model = getattr(pipeline, attr, None)
+            if model is not None:
+                model.to(normalized_initial_device)
 
         print("[NAF] Pre-loading NAF upsampler model...")
         for attr in [
@@ -429,7 +448,7 @@ def init_models():
                 model._load_naf()
 
         print("[MoGe-2] Loading model for camera estimation...")
-        moge_model = load_moge_model(device="cuda")
+        moge_model = load_moge_model(device=initial_device)
 
         print("[EnvMap] Loading environment maps...")
         _base = os.path.dirname(os.path.abspath(__file__))
@@ -444,7 +463,7 @@ def init_models():
                         cv2.COLOR_BGR2RGB,
                     ),
                     dtype=torch.float32,
-                    device="cuda",
+                    device=initial_device,
                 )
             ),
             "sunset": EnvMap(
@@ -457,7 +476,7 @@ def init_models():
                         cv2.COLOR_BGR2RGB,
                     ),
                     dtype=torch.float32,
-                    device="cuda",
+                    device=initial_device,
                 )
             ),
             "courtyard": EnvMap(
@@ -470,11 +489,11 @@ def init_models():
                         cv2.COLOR_BGR2RGB,
                     ),
                     dtype=torch.float32,
-                    device="cuda",
+                    device=initial_device,
                 )
             ),
         }
-        current_runtime_device = "cuda"
+        current_runtime_device = initial_device
 
 
 def get_preprocess_model():
@@ -629,7 +648,7 @@ def unpack_state(state_path, device: Union[str, torch.device] = "cuda"):
 # Progress Tracking (file-based, cross-process safe for @spaces.GPU)
 # ============================================================================
 
-import asyncio
+
 from fastapi import Request
 
 PROGRESS_DIR = os.path.join(TMP_DIR, "_progress")
@@ -725,9 +744,10 @@ def install_progress_hooks():
     global _progress_hooks_installed
     if _progress_hooks_installed:
         return
+    import o_voxel.postprocess as _ovp_module
+
     import trellis2.pipelines.samplers.flow_euler as _fe_module
     import trellis2.utils.render_utils as _ru_module
-    import o_voxel.postprocess as _ovp_module
 
     _fe_module.tqdm = _TqdmProgressInterceptor
     _ru_module.tqdm = _TqdmProgressInterceptor
@@ -1039,20 +1059,33 @@ def runtime_payload() -> dict[str, object]:
     payload = runtime_state.snapshot()
     payload["warmup_on_start"] = runtime_config.warmup_on_start
     payload["pipeline_resolved"] = resolved_pipeline_dir is not None
+    payload.update(
+        build_runtime_policy_payload(
+            os.environ,
+            cuda_available=torch.cuda.is_available(),
+        )
+    )
     return payload
 
 
 @app.get("/")
 async def homepage():
-    html_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "index_bak.html"
-    )
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
     with open(html_path, "r", encoding="utf-8") as f:
         return HTMLResponse(content=f.read())
 
 
 @app.get("/health")
 async def health():
+    payload = runtime_payload()
+    payload["current_runtime_device"] = current_runtime_device
+    payload["cpu_fallback_mode"] = "experimental"
+    payload["cpu_fallback_available"] = True
+    return JSONResponse(payload)
+
+
+@app.get("/runtime-policy")
+async def runtime_policy():
     payload = runtime_payload()
     payload["current_runtime_device"] = current_runtime_device
     payload["cpu_fallback_mode"] = "experimental"
@@ -1184,6 +1217,7 @@ def generate_3d(
     fov_unit: str = "deg",
     session_id: str = "",
 ) -> Dict:
+    plan = resolve_generation_plan(os.environ, torch.cuda.is_available())
     with acquire_inference(session_id):
         return _generate_3d_impl(
             image=image,
@@ -1204,8 +1238,8 @@ def generate_3d(
             manual_fov=manual_fov,
             fov_unit=fov_unit,
             session_id=session_id,
-            execution_device="cuda",
-            render_preview=True,
+            execution_device=cast(str, plan["execution_device"]),
+            render_preview=bool(plan["render_preview"]),
         )
 
 
@@ -1230,6 +1264,12 @@ def generate_3d_cpu_fallback(
     fov_unit: str = "deg",
     session_id: str = "",
 ) -> Dict:
+    plan = resolve_generation_plan(
+        os.environ,
+        torch.cuda.is_available(),
+        use_fallback=True,
+    )
+    fallback_rule_key = cast(str, plan["selected_rule_key"])
     with acquire_inference(session_id):
         try:
             return _generate_3d_impl(
@@ -1251,8 +1291,8 @@ def generate_3d_cpu_fallback(
                 manual_fov=manual_fov,
                 fov_unit=fov_unit,
                 session_id=session_id,
-                execution_device="cpu",
-                render_preview=False,
+                execution_device=cast(str, plan["execution_device"]),
+                render_preview=bool(plan["render_preview"]),
             )
         except Exception as cpu_exc:
             _fail_progress("CPU fallback unavailable", cpu_exc)
@@ -1260,7 +1300,9 @@ def generate_3d_cpu_fallback(
                 "error": True,
                 "fallback_mode": "cpu",
                 "message": build_cpu_fallback_error(
-                    RuntimeError("ZeroGPU quota exhausted"), cpu_exc
+                    cpu_exc,
+                    fallback_rule_key=fallback_rule_key,
+                    trigger_message="ZeroGPU quota was exhausted",
                 ),
                 "render_paths": {},
                 "state_path": "",
@@ -1276,13 +1318,14 @@ def generate_3d_cpu_fallback(
 def extract_glb_api(
     state_path: str, decimation_target: int, texture_size: int, session_id: str = ""
 ) -> FileData:
+    plan = resolve_extraction_plan(os.environ, torch.cuda.is_available())
     with acquire_inference(session_id):
         return _extract_glb_impl(
             state_path=state_path,
             decimation_target=decimation_target,
             texture_size=texture_size,
             session_id=session_id,
-            execution_device="cuda",
+            execution_device=cast(str, plan["execution_device"]),
         )
 
 
@@ -1290,13 +1333,18 @@ def extract_glb_api(
 def extract_glb_api_cpu_fallback(
     state_path: str, decimation_target: int, texture_size: int, session_id: str = ""
 ) -> FileData:
+    plan = resolve_extraction_plan(
+        os.environ,
+        torch.cuda.is_available(),
+        use_fallback=True,
+    )
     with acquire_inference(session_id):
         return _extract_glb_impl(
             state_path=state_path,
             decimation_target=decimation_target,
             texture_size=texture_size,
             session_id=session_id,
-            execution_device="cpu",
+            execution_device=cast(str, plan["execution_device"]),
         )
 
 

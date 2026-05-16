@@ -19,5 +19,6 @@ ckpts*/
 tmp/example.py
 tmp/
 autotune_cache.json
+# local editor history
 .history/
 
