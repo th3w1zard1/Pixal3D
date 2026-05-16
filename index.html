@@ -1341,7 +1341,8 @@
             { name: "Sunset", key: "shaded_sunset" },
             { name: "Blue", key: "shaded_courtyard" }
         ];
-        const ZERO_GPU_RE = /zerogpu quota|exceeded your zerogpu quota/i;
+        const ZERO_GPU_RE = /zerogpu quota|exceeded your zerogpu quota|daily zerogpu limit|hit your daily zerogpu limit/i;
+        const ZERO_GPU_WORKER_RE = /zerogpu worker error/i;
 
         // Global queue status polling
         function startQueuePolling() {
@@ -1656,6 +1657,27 @@
             return ZERO_GPU_RE.test(extractErrorText(err));
         }
 
+        function isZeroGpuWorkerError(err) {
+            if (!err || typeof err === 'string') return false;
+            if (ZERO_GPU_WORKER_RE.test(extractErrorText(err))) return true;
+            return err?.type === 'status'
+                && err?.stage === 'error'
+                && ZERO_GPU_WORKER_RE.test(err?.title || '');
+        }
+
+        function shouldUseCpuFallback(err) {
+            if (!runtimePolicy) return isZeroGpuQuotaError(err) || isZeroGpuWorkerError(err);
+            const hostedZeroGpuPrimary = runtimePolicy.runtime_policy_branch === 'space'
+                && runtimePolicy.primary_runtime_key === 'zerogpu';
+            return hostedZeroGpuPrimary && (isZeroGpuQuotaError(err) || isZeroGpuWorkerError(err));
+        }
+
+        function cpuFallbackReason(err) {
+            if (isZeroGpuQuotaError(err)) return 'GPU quota exhausted';
+            if (isZeroGpuWorkerError(err)) return 'ZeroGPU worker unavailable';
+            return 'Primary GPU runtime unavailable';
+        }
+
         function localTmpUrl(path) {
             if (!path) return '';
             const filename = path.split(/[\\/]/).pop();
@@ -1703,18 +1725,18 @@
             return viewer;
         }
 
-        async function runCpuGenerationFallback(params) {
+        async function runCpuGenerationFallback(params, reasonText = 'ZeroGPU worker unavailable') {
             const endpoint = runtimePolicy?.generation_fallback_endpoint || "/generate_3d_cpu_fallback";
             markRuntimeStage(currentCpuRuleKey());
-            showToast("GPU quota exhausted. Switching to CPU fallback...");
+            showToast(`${reasonText}. Switching to CPU fallback...`);
             const result = await client.predict(endpoint, params);
             return firstResultData(result);
         }
 
-        async function runCpuExtractionFallback(params) {
+        async function runCpuExtractionFallback(params, reasonText = 'ZeroGPU worker unavailable') {
             const endpoint = runtimePolicy?.extraction_fallback_endpoint || "/extract_glb_api_cpu_fallback";
             markRuntimeStage(currentCpuRuleKey());
-            showToast("GPU quota exhausted during extraction. Switching to CPU geometry export...");
+            showToast(`${reasonText}. Switching to CPU geometry export...`);
             const result = await client.predict(endpoint, params);
             return firstResultData(result);
         }
@@ -1763,9 +1785,9 @@
                 generationResult = firstResultData(result);
             } catch (err) {
                 console.error(err);
-                if (isZeroGpuQuotaError(err)) {
+                if (shouldUseCpuFallback(err)) {
                     try {
-                        generationResult = await runCpuGenerationFallback(params);
+                        generationResult = await runCpuGenerationFallback(params, cpuFallbackReason(err));
                     } catch (fallbackErr) {
                         console.error(fallbackErr);
                         stopProgressListener();
@@ -2002,9 +2024,9 @@
                 showToast("3D Asset ready!");
             } catch (err) {
                 console.error(err);
-                if (isZeroGpuQuotaError(err)) {
+                if (shouldUseCpuFallback(err)) {
                     try {
-                        const fallbackFile = await runCpuExtractionFallback(params);
+                        const fallbackFile = await runCpuExtractionFallback(params, cpuFallbackReason(err));
                         const glbUrl = getFileUrl(fallbackFile);
                         stopProgressListener();
                         await loadViewerModel(glbUrl, 3);
