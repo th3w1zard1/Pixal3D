@@ -108,6 +108,11 @@ Instead it publishes:
 
 Manual releases default to draft mode. If no manual tag is provided, the workflow falls back to `manual-<run_number>`.
 
+Because the release workflow checks out the repository with `lfs: true`, GitHub must have the tracked LFS payloads as well as the Git history. If Actions checkout fails with LFS `404` errors, repair the repo state by fetching the objects from the Hugging Face Space remote and pushing them to the GitHub remote:
+
+- `git lfs fetch origin --all`
+- `git lfs push github --all`
+
 ### Hugging Face Space sync
 
 The sync workflow defaults to the current public Space target:
@@ -127,6 +132,8 @@ Other supported repository variables:
 Required secret:
 
 - `HF_TOKEN`
+
+The sync workflow now fails immediately with a clear preflight error when `HF_TOKEN` is missing, instead of waiting until the Hugging Face API step to surface the problem.
 
 Recommended rollout path:
 

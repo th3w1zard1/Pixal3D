@@ -18,11 +18,11 @@ jobs:
     build-and-release:
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
               with:
                   fetch-depth: 0
                   lfs: true
-            - uses: actions/setup-python@v5
+            - uses: actions/setup-python@v6
               with:
                   python-version: "3.12"
             - name: Resolve release labels
@@ -88,7 +88,7 @@ jobs:
                     -czf "dist/pixal3d-workspace-${ASSET_LABEL}.tar.gz" \
                     .
             - name: Publish GitHub release assets
-              uses: softprops/action-gh-release@v2
+              uses: softprops/action-gh-release@v3
               with:
                   tag_name: ${{ steps.labels.outputs.tag_name }}
                   target_commitish: ${{ github.sha }}
