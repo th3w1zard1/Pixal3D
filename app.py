@@ -117,6 +117,7 @@ MOGE_MODEL_NAME = "Ruicheng/moge-2-vitl"
 WILD_MESH_SCALE = 1.0
 WILD_EXTEND_PIXEL = 0
 WILD_IMAGE_RESOLUTION = 512
+CPU_FALLBACK_AUTO_FOV_RADIANS = 0.2
 
 # Image Cond Model configs
 IMAGE_COND_CONFIGS = {
@@ -624,6 +625,25 @@ def get_camera_params_wild_moge(
     }
 
 
+def build_camera_params_from_fov(camera_angle_x: float, fov_label: str) -> dict:
+    grid_point = torch.tensor([-1.0, 0.0, 0.0])
+    distance = distance_from_fov(
+        camera_angle_x,
+        grid_point,
+        torch.tensor([0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]),
+        WILD_MESH_SCALE,
+        WILD_IMAGE_RESOLUTION,
+    )["distance_from_x"]
+    print(
+        f"[Camera] Using {fov_label}: {math.degrees(camera_angle_x):.2f}° ({camera_angle_x:.4f} rad), distance: {distance:.4f}"
+    )
+    return {
+        "camera_angle_x": camera_angle_x,
+        "distance": distance,
+        "mesh_scale": WILD_MESH_SCALE,
+    }
+
+
 def pack_state(shape_slat, tex_slat, res):
     state_data = {
         "shape_slat_feats": shape_slat.feats.cpu().numpy(),
@@ -775,28 +795,18 @@ def _build_camera_params(
     if manual_fov > 0:
         if fov_unit == "rad":
             camera_angle_x = float(manual_fov)
-            fov_deg = math.degrees(manual_fov)
         else:
             camera_angle_x = math.radians(manual_fov)
-            fov_deg = float(manual_fov)
-        grid_point = torch.tensor([-1.0, 0.0, 0.0])
-        distance = distance_from_fov(
-            camera_angle_x,
-            grid_point,
-            torch.tensor(
-                [0 - WILD_EXTEND_PIXEL, WILD_IMAGE_RESOLUTION - 1 + WILD_EXTEND_PIXEL]
-            ),
-            WILD_MESH_SCALE,
-            WILD_IMAGE_RESOLUTION,
-        )["distance_from_x"]
+        return build_camera_params_from_fov(camera_angle_x, "manual FOV")
+
+    if _normalize_device(execution_device).type == "cpu":
         print(
-            f"[Camera] Using manual FOV: {fov_deg:.2f}° ({camera_angle_x:.4f} rad), distance: {distance:.4f}"
+            "[Camera] CPU execution detected; skipping MoGe auto-estimation and using the deterministic 0.2 rad fallback."
         )
-        return {
-            "camera_angle_x": camera_angle_x,
-            "distance": distance,
-            "mesh_scale": WILD_MESH_SCALE,
-        }
+        return build_camera_params_from_fov(
+            CPU_FALLBACK_AUTO_FOV_RADIANS,
+            "CPU fallback auto FOV",
+        )
 
     return get_camera_params_wild_moge(
         temp_processed_path,
@@ -828,7 +838,7 @@ def _generate_3d_impl(
     session_id: str,
     execution_device: str,
     render_preview: bool,
-) -> Dict:
+) -> list[dict[str, Any]]:
     stage = "Preparing runtime"
     _reset_progress(session_id)
     try:
@@ -897,7 +907,7 @@ def _generate_3d_impl(
 
     mesh = mesh_list[0]
     state_path = pack_state(shape_slat, tex_slat, res)
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "state_path": os.path.abspath(state_path),
         "camera_angle_x": camera_params["camera_angle_x"],
         "distance": camera_params["distance"],
@@ -981,7 +991,7 @@ def _extract_glb_impl(
     _update_progress("Decoding latent", 0, 1)
 
     shape_slat, tex_slat, res = unpack_state(state_path, device=execution_device)
-    mesh = pipeline.decode_latent(shape_slat, tex_slat, res)[0]
+    mesh = pipeline.decode_latent(shape_slat, tex_slat, res)[0]  # pyright: ignore[reportOptionalMemberAccess]
     _update_progress("Decoding latent", 1, 1)
 
     if execution_device == "cpu":
