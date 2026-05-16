@@ -233,20 +233,20 @@ def acquire_inference(session_id: str = ""):
         raise
 
 
-def _normalize_device(device: Union[str, torch.device]) -> torch.device:
+def _normalize_device(device: str | torch.device) -> torch.device:
     return device if isinstance(device, torch.device) else torch.device(device)
 
 
-def _set_dense_attention_backend(device: Union[str, torch.device]) -> None:
+def _set_dense_attention_backend(device: str | torch.device) -> None:
     from trellis2.modules.attention import config as attention_config
 
     normalized = _normalize_device(device)
     backend = "sdpa" if normalized.type == "cpu" else DEFAULT_ATTN_BACKEND
-    attention_config.set_backend(backend)
+    attention_config.set_backend(backend)  # pyright: ignore[reportArgumentType]
     print(f"[Runtime] Dense attention backend set to: {backend}")
 
 
-def move_runtime_to(device: Union[str, torch.device]) -> None:
+def move_runtime_to(device: str | torch.device) -> None:
     global current_runtime_device, pipeline, moge_model
 
     normalized = _normalize_device(device)
