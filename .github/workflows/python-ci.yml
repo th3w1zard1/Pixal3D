@@ -32,6 +32,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Install syntax tooling
+        run: python -m pip install PyYAML==6.0.2
+      - name: Validate GitHub workflow YAML
+        run: python scripts/check_workflow_yaml.py
       - name: Compile core runtime files
         run: >-
           python -m py_compile
@@ -41,6 +45,7 @@ jobs:
           runtime_policy.py
           space_bootstrap.py
           space_runtime.py
+          scripts/check_workflow_yaml.py
           scripts/resolve_hf_space_config.py
           scripts/ensure_hf_space.py
 

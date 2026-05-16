@@ -87,6 +87,7 @@ The CI workflow is intentionally CPU-safe and lightweight.
 It currently validates:
 
 - Ruff functional checks on `runtime_policy.py`, `space_bootstrap.py`, `space_runtime.py`, `scripts/`, and `tests/`
+- GitHub Actions workflow YAML parsing through `scripts/check_workflow_yaml.py`
 - syntax compilation for the core app and runtime files
 - `python -m unittest discover tests -p "test_*.py" -v`
 
