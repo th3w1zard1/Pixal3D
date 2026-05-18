@@ -8,6 +8,7 @@ import time
 import traceback
 from contextlib import contextmanager
 from typing import *
+from typing import Mapping, Union, cast
 
 import cv2
 import numpy as np
@@ -104,6 +105,8 @@ STEPS = 8
 ZEROGPU_MAX_DURATION_SECONDS = 120
 ZEROGPU_MAX_RESOLUTION = 1024
 ZEROGPU_MAX_STAGE_STEPS = 5
+ZEROGPU_MAX_DECIMATION_TARGET = 500000
+ZEROGPU_MAX_TEXTURE_SIZE = 512
 
 # Cascade parameters
 CASCADE_LR_RESOLUTION = 512
@@ -309,6 +312,33 @@ def normalize_generation_request(
         "shape_slat_sampling_steps": normalized_shape_steps,
         "tex_slat_sampling_steps": normalized_tex_steps,
         "messages": messages,
+    }
+
+
+def normalize_extraction_request(
+    decimation_target: int,
+    texture_size: int,
+    env: Mapping[str, str] | None = None,
+    cuda_available: bool | None = None,
+) -> dict[str, int | str]:
+    runtime_mode = resolve_runtime_mode(env, cuda_available)
+    normalized_decimation_target = int(decimation_target)
+    normalized_texture_size = int(texture_size)
+
+    if runtime_mode == "zerogpu":
+        normalized_decimation_target = min(
+            normalized_decimation_target,
+            ZEROGPU_MAX_DECIMATION_TARGET,
+        )
+        normalized_texture_size = min(
+            normalized_texture_size,
+            ZEROGPU_MAX_TEXTURE_SIZE,
+        )
+
+    return {
+        "runtime_mode": runtime_mode,
+        "decimation_target": normalized_decimation_target,
+        "texture_size": normalized_texture_size,
     }
 
 
@@ -801,7 +831,7 @@ def unpack_state(state_path, device: Union[str, torch.device] = "cuda"):
 # ============================================================================
 
 
-from fastapi import Request
+from fastapi import Request  # noqa: E402
 
 PROGRESS_DIR = os.path.join(TMP_DIR, "_progress")
 os.makedirs(PROGRESS_DIR, exist_ok=True)
@@ -1141,6 +1171,15 @@ def _extract_glb_impl(
     _reset_progress(session_id)
     _update_progress("Decoding latent", 0, 1)
 
+    extraction_settings = normalize_extraction_request(
+        decimation_target=decimation_target,
+        texture_size=texture_size,
+        env=os.environ,
+        cuda_available=torch.cuda.is_available(),
+    )
+    decimation_target = cast(int, extraction_settings["decimation_target"])
+    texture_size = cast(int, extraction_settings["texture_size"])
+
     shape_slat, tex_slat, res = unpack_state(state_path, device=execution_device)
     mesh = pipeline.decode_latent(shape_slat, tex_slat, res)[0]  # pyright: ignore[reportOptionalMemberAccess]
     _update_progress("Decoding latent", 1, 1)
@@ -1233,6 +1272,9 @@ def extract_glb_gpu_duration(
     texture_size: int,
     session_id: str = "",
 ) -> int:
+    del state_path, decimation_target, texture_size, session_id
+    if resolve_runtime_mode(os.environ, torch.cuda.is_available()) == "zerogpu":
+        return ZEROGPU_MAX_DURATION_SECONDS
     return 30
 
 

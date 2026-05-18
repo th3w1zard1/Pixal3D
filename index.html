@@ -1051,8 +1051,8 @@
                                             Improves file size and rendering performance.
                                             <div class="note">
                                                 <b>100K (10%):</b> Ultra-low detail, mobile only<br>
-                                                <b>500K (50%):</b> Mobile/web, acceptable quality<br>
-                                                <b>1M (100%):</b> Full quality (default)<br>
+                                                <b>500K (50%):</b> Hosted ZeroGPU default<br>
+                                                <b>1M (100%):</b> Larger GPU export path<br>
                                                 <b>Increase:</b> If model looks boxy/low-poly<br>
                                                 <b>Decrease:</b> If file too large or rendering slow<br>
                                                 <b>File size:</b> Roughly 100K triangles = 200-400KB GLTF
@@ -1060,9 +1060,9 @@
                                         </div>
                                     </span>
                                 </span>
-                                <span><span id="decim_val">1M</span></span>
+                                <span><span id="decim_val">0.5M</span></span>
                             </label>
-                            <input type="range" id="decimation" min="100000" max="1000000" step="10000" value="1000000"
+                            <input type="range" id="decimation" min="100000" max="1000000" step="10000" value="500000"
                                 oninput="updateVal('decimation')">
                         </div>
                     </div>
@@ -1839,20 +1839,14 @@
             Object.entries(renderPaths).forEach(([mode, files]) => {
                 files.forEach((file, i) => {
                     const img = document.createElement('img');
-                    // Try the URL from Gradio, fallback to our mounted /tmp route if it's an absolute local path
-                    let url = file.url;
-                    if (!url && file.path) {
-                        const filename = file.path.split(/[\\/]/).pop();
-                        url = `/tmp/${filename}`;
-                    }
+                    let url = getFileUrl(file);
                     img.src = url;
                     img.className = 'preview-frame';
                     img.id = `frame-${mode}-${i}`;
                     img.onerror = () => {
-                        // Fallback attempt if the first URL fails
-                        const filename = file.path ? file.path.split(/[\\/]/).pop() : null;
-                        if (filename && !img.src.includes('/tmp/')) {
-                            img.src = `/tmp/${filename}`;
+                        const fallback = typeof file === 'object' && file?.path ? localTmpUrl(file.path) : '';
+                        if (fallback && !img.src.includes('/tmp/')) {
+                            img.src = fallback;
                         }
                     };
                     container.appendChild(img);
@@ -1938,7 +1932,7 @@
             const params = {
                 state_path: generationResult.state_path,
                 decimation_target: parseInt(document.getElementById('decimation').value),
-                texture_size: 4096,
+                texture_size: 512,
                 session_id: sessionId
             };
 
