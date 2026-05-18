@@ -107,6 +107,7 @@ ZEROGPU_MAX_RESOLUTION = 1024
 ZEROGPU_MAX_STAGE_STEPS = 5
 ZEROGPU_MAX_DECIMATION_TARGET = 500000
 ZEROGPU_MAX_TEXTURE_SIZE = 512
+DEFAULT_ZEROGPU_HARDWARE = "zero-a10g"
 
 # Cascade parameters
 CASCADE_LR_RESOLUTION = 512
@@ -263,6 +264,83 @@ def resolve_extraction_plan(
     return {
         "execution_device": resolve_execution_device(env, cuda_available),
         "runtime_mode": resolve_runtime_mode(env, cuda_available),
+    }
+
+
+def resolve_target_hardware(
+    env: Mapping[str, str] | None = None,
+) -> str:
+    env = env or os.environ
+    return (env.get("PIXAL3D_ZEROGPU_HARDWARE") or DEFAULT_ZEROGPU_HARDWARE).strip()
+
+
+def cpu_runtime_message(
+    target_hardware: str,
+    auto_request_enabled: bool,
+) -> str:
+    if auto_request_enabled:
+        return (
+            f"CPU hardware is active. Requested {target_hardware} so Pixal3D can run "
+            "on supported Hugging Face hardware. The Space will restart; reload and retry "
+            "once runtime_mode changes from cpu."
+        )
+    return (
+        "CPU hardware is active, but Pixal3D inference still depends on GPU-only operators. "
+        "Set the HF_TOKEN secret for this Space to allow automatic switching to ZeroGPU."
+    )
+
+
+def request_supported_hardware(
+    target_hardware: str,
+) -> dict[str, object]:
+    space_id = os.environ.get("SPACE_ID") or ""
+    if not space_id:
+        return {
+            "ok": False,
+            "message": "Hardware switching only works on a Hugging Face Space runtime.",
+            "requested_hardware": target_hardware,
+        }
+    if not runtime_config.hf_token:
+        return {
+            "ok": False,
+            "message": "HF_TOKEN secret is missing.",
+            "requested_hardware": target_hardware,
+        }
+
+    from huggingface_hub import HfApi
+
+    api = HfApi(token=runtime_config.hf_token)
+    runtime = api.get_space_runtime(space_id)
+    if runtime.hardware != target_hardware and runtime.requested_hardware != target_hardware:
+        api.request_space_hardware(repo_id=space_id, hardware=target_hardware)
+
+    return {
+        "ok": True,
+        "current_hardware": runtime.hardware,
+        "requested_hardware": target_hardware,
+        "current_stage": runtime.stage,
+    }
+
+
+def cpu_transition_payload(action: str) -> dict[str, object]:
+    target_hardware = resolve_target_hardware(os.environ)
+    transition = request_supported_hardware(target_hardware)
+    auto_request_enabled = bool(transition.get("ok"))
+    message = cpu_runtime_message(target_hardware, auto_request_enabled)
+    if not auto_request_enabled:
+        detail = str(transition.get("message") or "")
+        if detail:
+            message = f"{message} {detail}".strip()
+
+    return {
+        "error": True,
+        "action": action,
+        "runtime_mode": "cpu",
+        "preview_available": False,
+        "extract_available": False,
+        "hardware_transition_requested": auto_request_enabled,
+        "requested_hardware": target_hardware,
+        "message": message,
     }
 
 
@@ -1288,14 +1366,26 @@ app = Server()
 def runtime_payload() -> dict[str, object]:
     payload = runtime_state.snapshot()
     cuda_available = torch.cuda.is_available()
+    runtime_mode = resolve_runtime_mode(os.environ, cuda_available)
     payload["warmup_on_start"] = runtime_config.warmup_on_start
     payload["pipeline_resolved"] = resolved_pipeline_dir is not None
     payload["current_runtime_device"] = current_runtime_device
-    payload["runtime_mode"] = resolve_runtime_mode(os.environ, cuda_available)
+    payload["runtime_mode"] = runtime_mode
     payload["cuda_available"] = cuda_available
     payload["accelerator"] = os.environ.get("ACCELERATOR") or "unknown"
     payload["space_id"] = os.environ.get("SPACE_ID") or ""
     payload["preview_available"] = cuda_available
+    target_hardware = resolve_target_hardware(os.environ)
+    payload["target_hardware"] = target_hardware
+
+    if runtime_mode == "cpu":
+        payload["ready"] = False
+        payload["state"] = "cpu-standby"
+        payload["preview_available"] = False
+        payload["message"] = cpu_runtime_message(
+            target_hardware,
+            bool(runtime_config.hf_token and payload["space_id"]),
+        )
     return payload
 
 
@@ -1408,6 +1498,12 @@ def warmup_runtime(session_id: str = "") -> Dict:
     _reset_progress(session_id)
     stage = "Preparing runtime"
     try:
+        if resolve_runtime_mode(os.environ, torch.cuda.is_available()) == "cpu":
+            _update_progress("Requesting ZeroGPU hardware", 1, 1)
+            response = runtime_payload()
+            response.update(cpu_transition_payload("warmup"))
+            _finish_progress()
+            return response
         _update_progress(stage, 0, 2)
         ensure_runtime_ready()
         stage = "Installing progress hooks"
@@ -1443,6 +1539,8 @@ def generate_3d(
     session_id: str = "",
 ) -> Dict:
     plan = resolve_generation_plan(os.environ, torch.cuda.is_available())
+    if plan["runtime_mode"] == "cpu":
+        return cpu_transition_payload("generate")
     with acquire_inference(session_id):
         return _generate_3d_impl(
             image=image,
@@ -1474,6 +1572,8 @@ def extract_glb_api(
     state_path: str, decimation_target: int, texture_size: int, session_id: str = ""
 ) -> FileData:
     plan = resolve_extraction_plan(os.environ, torch.cuda.is_available())
+    if plan["runtime_mode"] == "cpu":
+        raise RuntimeError(cpu_transition_payload("extract")["message"])
     with acquire_inference(session_id):
         return _extract_glb_impl(
             state_path=state_path,
