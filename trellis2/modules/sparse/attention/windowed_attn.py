@@ -3,6 +3,7 @@ import torch
 import math
 from .. import SparseTensor
 from .. import config
+from .full_attn import _naive_varlen_attention
 
 
 __all__ = [
@@ -15,7 +16,7 @@ def calc_window_partition(
     tensor: SparseTensor,
     window_size: Union[int, Tuple[int, ...]],
     shift_window: Union[int, Tuple[int, ...]] = 0,
-) -> Tuple[torch.Tensor, torch.Tensor, List[int], List[int]]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, Any]]:
     """
     Calculate serialization and partitioning for a set of coordinates.
 
@@ -67,8 +68,16 @@ def calc_window_partition(
             'max_seqlen_q': torch.max(seq_lens),
             'max_seqlen_k': torch.max(seq_lens),
         }
+    else:
+        attn_func_args = {}
 
     return fwd_indices, bwd_indices, seq_lens, attn_func_args
+
+
+def _seq_lens_to_list(seq_lens: Sequence[int] | torch.Tensor) -> list[int]:
+    if isinstance(seq_lens, torch.Tensor):
+        return [int(v) for v in seq_lens.tolist()]
+    return [int(v) for v in seq_lens]
     
 
 def sparse_windowed_scaled_dot_product_self_attention(
@@ -120,6 +129,10 @@ def sparse_windowed_scaled_dot_product_self_attention(
         if 'flash_attn' not in globals():
             import flash_attn
         out = flash_attn.flash_attn_varlen_qkvpacked_func(qkv_feats, **attn_func_args)  # [M, H, C]
+    elif config.ATTN == 'naive':
+        q, k, v = qkv_feats.unbind(dim=1)
+        seq_lens_list = _seq_lens_to_list(seq_lens)
+        out = _naive_varlen_attention(q, k, v, seq_lens_list, seq_lens_list)
 
     out = out[bwd_indices]      # [T, H, C]
 
@@ -179,7 +192,7 @@ def sparse_windowed_scaled_dot_product_cross_attention(
         if 'xops' not in globals():
             import xformers.ops as xops
         k, v = kv_feats.unbind(dim=1)                                                   # [M, H, C]
-        q = q.unsqueeze(0)                                                              # [1, M, H, C]
+        q = q_feats.unsqueeze(0)                                                        # [1, M, H, C]
         k = k.unsqueeze(0)                                                              # [1, M, H, C]
         v = v.unsqueeze(0)                                                              # [1, M, H, C]
         mask = xops.fmha.BlockDiagonalMask.from_seqlens(q_seq_lens, kv_seq_lens)
@@ -199,6 +212,15 @@ def sparse_windowed_scaled_dot_product_cross_attention(
             cu_seqlens_q=q_attn_func_args['cu_seqlens_q'], cu_seqlens_k=kv_attn_func_args['cu_seqlens_k'],
             max_seqlen_q=q_attn_func_args['max_seqlen_q'], max_seqlen_k=kv_attn_func_args['max_seqlen_k'],
         )  # [M, H, C]
+    elif config.ATTN == 'naive':
+        k, v = kv_feats.unbind(dim=1)
+        out = _naive_varlen_attention(
+            q_feats,
+            k,
+            v,
+            _seq_lens_to_list(q_seq_lens),
+            _seq_lens_to_list(kv_seq_lens),
+        )
 
     out = out[q_bwd_indices]      # [T, H, C]
 

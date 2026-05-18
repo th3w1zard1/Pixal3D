@@ -22,8 +22,8 @@ In this repo, that upstream foundation is being reshaped into ImageEZGen3D with 
 The current direction of the repository is to:
 
 - prefer a ZeroGPU-first Gradio workflow when the environment supports it;
+- follow the hardware assigned to the current Space or local run without browser-managed fallback layers;
 - keep local development viable without CUDA, model weights, or native build friction;
-- make CPU fallback explicit instead of magical;
 - keep every generation run inspectable through manifests, reports, and retained outputs;
 - validate inputs and exported artifacts before claiming success;
 - gate heavy adapters behind license, dependency, and runtime checks instead of enabling them early.
@@ -36,33 +36,7 @@ In short, the project is prioritizing dependable workflow and deployment hygiene
 - Default background-removal model: `ZhengPeng7/BiRefNet`
 - Default fallback model: `ZhengPeng7/BiRefNet_lite`
 - Health endpoint: `/health`
-- Runtime policy endpoint: `/runtime-policy`
 - Readiness endpoint: `/ready` returns `200` only after the GPU runtime is actually primed
-
-## Runtime fallback policy
-
-Pixal3D now carries an explicit 4-stage runtime policy in code and docs:
-
-1. `zerogpu`
-2. `space_cpu`
-3. `local_gpu`
-4. `local_cpu`
-
-Why this order:
-
-- Prefer the highest-fidelity runtime available on the current host before stepping down.
-- Keep the public Hugging Face Space responsive when ZeroGPU quota is exhausted.
-- Preserve a full-quality path for duplicated or self-hosted local CUDA runs.
-- Keep a last-resort CPU mode for debugging and geometry-first export on machines without CUDA.
-
-Important boundary:
-
-- Hosted Space branch: `zerogpu -> space_cpu`
-- Local branch: `local_gpu -> local_cpu`
-
-The hosted Space cannot automatically execute work on a local machine, so the local stages are the fallback order for duplicated or self-hosted runs rather than browser failover from the public Space.
-
-See [RUNTIME_FALLBACK_POLICY.md](RUNTIME_FALLBACK_POLICY.md) for the full rulebook.
 
 ## Optional environment variables
 
@@ -86,10 +60,9 @@ The CI workflow is intentionally CPU-safe and lightweight.
 
 It currently validates:
 
-- Ruff functional checks on `runtime_policy.py`, `space_bootstrap.py`, `space_runtime.py`, `scripts/`, and `tests/`
+- Ruff functional checks on `app.py`, `api_payload_utils.py`, `space_bootstrap.py`, `space_runtime.py`, and `scripts/`
 - GitHub Actions workflow YAML parsing through `scripts/check_workflow_yaml.py`
 - syntax compilation for the core app and runtime files
-- `python -m unittest discover tests -p "test_*.py" -v`
 
 It intentionally does not validate:
 

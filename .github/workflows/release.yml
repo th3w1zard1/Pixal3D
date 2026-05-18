@@ -58,7 +58,7 @@ jobs:
                       "git_sha": os.environ["GITHUB_SHA"],
                       "python_version": "3.12",
                       "app_file": "app.py",
-                      "runtime_policy_file": "RUNTIME_FALLBACK_POLICY.md",
+                      "runtime_mode": "hardware-derived",
                       "created_at": datetime.now(timezone.utc).isoformat(),
                   }
 

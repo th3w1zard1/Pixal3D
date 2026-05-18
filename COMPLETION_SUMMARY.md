@@ -193,7 +193,7 @@ Created 7 reference documents:
 
 ### File Sizes
 
-```
+```text
 Original (1M triangles):    3-4 MB GLTF
 After 50% decimation:       1.5-2 MB GLTF
 After 70% decimation:       ~1 MB GLTF
@@ -202,7 +202,7 @@ After 90% decimation:       ~300-500 KB GLTF
 
 ### Performance
 
-```
+```text
 1M triangles:    10-15 fps (mobile: 2-3 fps)
 500K triangles:  30-40 fps (mobile: 10-15 fps)
 250K triangles:  60+ fps (mobile: 30-40 fps)

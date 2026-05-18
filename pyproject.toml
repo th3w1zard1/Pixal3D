@@ -5,12 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "imageezgen3d"
 version = "0.1.0"
-description = "A Pixal3D-derived image-to-3D workspace that prioritizes reliable ZeroGPU deployment, explicit CPU fallbacks, and inspectable runs."
+description = "A Pixal3D-derived image-to-3D workspace focused on reliable Hugging Face and local hardware execution."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
-authors = [
-  { name = "ImageEZGen3D contributors" },
-]
+authors = [{ name = "ImageEZGen3D contributors" }]
 keywords = [
   "image-to-3d",
   "gradio",
@@ -46,33 +44,33 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-  "coverage[toml]>=7.6,<8",
-  "pytest>=8,<9",
-]
+dev = ["coverage[toml]>=7.6,<8", "pytest>=8,<9"]
 
 [tool.setuptools.packages.find]
 include = ["trellis2*"]
 exclude = ["assets*", "tests*"]
 
-[tool.pytest.ini_options]
-pythonpath = ["."]
-testpaths = ["tests"]
-
 [tool.coverage.run]
 branch = true
-source = ["runtime_policy", "space_bootstrap", "space_runtime", "trellis2", "tests"]
+source = [
+  "app",
+  "api_payload_utils",
+  "space_bootstrap",
+  "space_runtime",
+  "trellis2",
+]
 
 [tool.coverage.report]
-omit = [
-  "app_bak.py",
-  "app_local.py",
-  "app_proxy.py",
-]
+omit = ["app_bak.py", "app_local.py", "app_proxy.py"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["app.py", "runtime_policy.py", "space_bootstrap.py", "space_runtime.py", "tests"]
+files = [
+  "app.py",
+  "api_payload_utils.py",
+  "space_bootstrap.py",
+  "space_runtime.py",
+]
 ignore_missing_imports = true
 exclude = "(^\\.history/|^\\.venv/|^node_modules/|^tmp/|^assets/)"
 
@@ -87,8 +85,6 @@ select = ["E", "F", "I"]
 [tool.imageezgen3d]
 workspace_name = "ImageEZGen3D"
 upstream_project = "TencentARC/Pixal3D-T"
-runtime_policy_module = "runtime_policy.py"
-runtime_policy_document = "RUNTIME_FALLBACK_POLICY.md"
 space_entrypoint = "app.py"
 space_frontend = "index.html"
 
@@ -96,8 +92,8 @@ space_frontend = "index.html"
 summary = "ImageEZGen3D is aiming to be a reliable image-to-3D workspace scaffold before it becomes a heavy model integration project."
 principles = [
   "prefer a ZeroGPU-first Gradio workflow when the environment supports it",
+  "follow the active ZeroGPU, GPU, or CPU hardware directly instead of browser-managed fallback layers",
   "keep local development viable without CUDA, model weights, or native build friction",
-  "make CPU fallback explicit instead of magical",
   "keep every generation run inspectable through manifests, reports, and retained outputs",
   "validate inputs and exported artifacts before claiming success",
   "gate heavy adapters behind license, dependency, and runtime checks instead of enabling them early",

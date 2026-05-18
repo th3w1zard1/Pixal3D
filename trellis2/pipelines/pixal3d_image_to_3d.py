@@ -716,12 +716,20 @@ class Pixal3DImageTo3DPipeline(Pipeline):
             tex_slat_sampler_params (dict): Additional parameters for the texture SLat sampler.
             preprocess_image (bool): Whether to preprocess the image.
             return_latent (bool): Whether to return the latent codes.
-            pipeline_type (str): The type of the pipeline. Options: '1024_cascade', '1536_cascade'.
+            pipeline_type (str): The type of the pipeline. Options: '1024', '1024_cascade', '1536_cascade'.
             max_num_tokens (int): The maximum number of tokens to use.
         """
         # Check pipeline type
         pipeline_type = pipeline_type or self.default_pipeline_type
-        if pipeline_type == "1024_cascade":
+        if pipeline_type == "1024":
+            assert "shape_slat_flow_model_1024" in self.models, (
+                "No 1024 resolution shape SLat flow model found."
+            )
+            assert "tex_slat_flow_model_1024" in self.models, (
+                "No 1024 resolution texture SLat flow model found."
+            )
+            hr_resolution = 1024
+        elif pipeline_type == "1024_cascade":
             assert "shape_slat_flow_model_512" in self.models, (
                 "No 512 resolution shape SLat flow model found."
             )
@@ -777,12 +785,57 @@ class Pixal3DImageTo3DPipeline(Pipeline):
             distance=distance,
             mesh_scale=mesh_scale,
         )
-        ss_res = 32
+        ss_res = 64 if pipeline_type == "1024" else 32
         coords = self.sample_sparse_structure(
             cond_ss, ss_res, num_samples, sparse_structure_sampler_params
         )
         del cond_ss
         self._maybe_clear_cuda_cache()
+
+        # ---- Direct 1024 path ----
+        if pipeline_type == "1024":
+            grid_res = hr_resolution // 16
+            cond_shape = self.get_proj_cond_shape(
+                self.image_cond_model_shape_1024,
+                [image],
+                coords,
+                camera_angle_x=camera_angle_x,
+                distance=distance,
+                mesh_scale=mesh_scale,
+                grid_resolution_override=grid_res,
+            )
+            shape_slat = self.sample_shape_slat(
+                cond_shape,
+                self.models["shape_slat_flow_model_1024"],
+                coords,
+                shape_slat_sampler_params,
+            )
+            del cond_shape
+            self._maybe_clear_cuda_cache()
+
+            cond_tex = self.get_proj_cond_shape(
+                self.image_cond_model_tex_1024,
+                [image],
+                shape_slat.coords,
+                camera_angle_x=camera_angle_x,
+                distance=distance,
+                mesh_scale=mesh_scale,
+                grid_resolution_override=grid_res,
+            )
+            tex_slat = self.sample_tex_slat(
+                cond_tex,
+                self.models["tex_slat_flow_model_1024"],
+                shape_slat,
+                tex_slat_sampler_params,
+            )
+            del cond_tex
+            self._maybe_clear_cuda_cache()
+
+            res = hr_resolution
+            out_mesh = self.decode_latent(shape_slat, tex_slat, res)
+            if return_latent:
+                return out_mesh, (shape_slat, tex_slat, res)
+            return out_mesh
 
         # ---- Stage 2: Shape LR 512 (proj) ----
         cond_shape_lr = self.get_proj_cond_shape(

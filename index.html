@@ -145,68 +145,6 @@
             color: inherit;
         }
 
-        .runtime-policy-card {
-            background: var(--glass);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: 0.95rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.85rem;
-        }
-
-        .runtime-policy-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 0.75rem;
-        }
-
-        .runtime-metric span {
-            display: block;
-            font-size: 0.66rem;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 0.25rem;
-        }
-
-        .runtime-metric strong {
-            display: block;
-            font-size: 0.82rem;
-            font-weight: 700;
-            color: var(--text);
-            line-height: 1.35;
-        }
-
-        .runtime-order {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.4rem;
-        }
-
-        .runtime-chip {
-            border-radius: 999px;
-            border: 1px solid rgba(129, 140, 248, 0.22);
-            background: rgba(129, 140, 248, 0.08);
-            color: #c7d2fe;
-            padding: 0.32rem 0.55rem;
-            font-size: 0.7rem;
-            font-weight: 700;
-            letter-spacing: 0.03em;
-        }
-
-        .runtime-chip.active {
-            border-color: rgba(16, 185, 129, 0.4);
-            background: rgba(16, 185, 129, 0.15);
-            color: #86efac;
-        }
-
-        .runtime-note {
-            font-size: 0.72rem;
-            color: var(--text-dim);
-            line-height: 1.55;
-        }
-
         .steps-nav {
             display: flex;
             gap: 2rem;
@@ -326,6 +264,71 @@
             background: #000;
             position: relative;
             box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);
+        }
+
+        .viewer-error {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            padding: 2rem 2.5rem;
+            background: linear-gradient(135deg, rgba(11, 15, 26, 0.96), rgba(24, 12, 28, 0.96));
+            color: var(--text);
+            text-align: center;
+            z-index: 5;
+            overflow: auto;
+        }
+
+        .viewer-error.show {
+            display: flex;
+        }
+
+        .viewer-error h3 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #ffb4b4;
+            margin: 0;
+            letter-spacing: 0.01em;
+        }
+
+        .viewer-error p {
+            margin: 0;
+            max-width: 60ch;
+            font-size: 0.9rem;
+            line-height: 1.55;
+            color: var(--text-dim, #cbd5e1);
+            white-space: pre-wrap;
+        }
+
+        .viewer-error code {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 0.1em 0.4em;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        .viewer-error .viewer-error-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .viewer-error button {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: var(--text);
+            padding: 0.5rem 0.9rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .viewer-error button:hover {
+            background: rgba(255, 255, 255, 0.14);
         }
 
         #frame-container {
@@ -842,8 +845,8 @@
             <div class="sidebar-section" style="margin-bottom: 1.5rem;">
                 <p style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.6;">
                     1. Upload an image and click Generate.<br>
-                    2. Click Extract GLB to export.<br>
-                    3. Download the generated GLB file.
+                    2. Review the preview when rendered views are available.<br>
+                    3. Extract or download the generated GLB file.
                 </p>
                 <p
                     style="font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; margin-top: 0.5rem; opacity: 0.7;">
@@ -856,34 +859,6 @@
                     <i data-lucide="globe" style="width: 16px;"></i>
                     Project Page
                 </a>
-            </div>
-
-            <div class="sidebar-section">
-                <h3 style="display: flex; align-items: center;"><i data-lucide="server"
-                        style="width: 14px;"></i> Runtime Policy</h3>
-                <div class="runtime-policy-card">
-                    <div class="runtime-policy-grid">
-                        <div class="runtime-metric">
-                            <span>Branch</span>
-                            <strong id="runtime-branch">Loading...</strong>
-                        </div>
-                        <div class="runtime-metric">
-                            <span>Active Stage</span>
-                            <strong id="runtime-stage">Loading...</strong>
-                        </div>
-                        <div class="runtime-metric">
-                            <span>Primary</span>
-                            <strong id="runtime-primary">Loading...</strong>
-                        </div>
-                        <div class="runtime-metric">
-                            <span>Fallback</span>
-                            <strong id="runtime-fallback">Loading...</strong>
-                        </div>
-                    </div>
-                    <div class="runtime-order" id="runtime-order"></div>
-                    <p class="runtime-note" id="runtime-summary">Loading runtime policy...</p>
-                    <p class="runtime-note" id="runtime-boundary"></p>
-                </div>
             </div>
 
             <div class="sidebar-section">
@@ -906,8 +881,8 @@
                             </span>
                         </label>
                         <select id="resolution">
-                            <option value="1024">1024 (Balanced)</option>
-                            <option value="1536" selected>1536 (High Quality)</option>
+                            <option value="1024" selected>1024 (Balanced)</option>
+                            <option value="1536">1536 (High Quality)</option>
                         </select>
                     </div>
                     <div class="input-wrapper">
@@ -1263,6 +1238,14 @@
                             shadow-intensity="1.5" environment-image="neutral" exposure="1.2">
                             <div slot="progress-bar" style="background: var(--primary); height: 4px;"></div>
                         </model-viewer>
+                        <div class="viewer-error" id="viewer-error" role="alert" aria-live="assertive">
+                            <h3 id="viewer-error-title">Generation could not complete</h3>
+                            <p id="viewer-error-message"></p>
+                            <div class="viewer-error-actions">
+                                <button type="button" id="viewer-error-copy">Copy details</button>
+                                <button type="button" id="viewer-error-dismiss">Dismiss</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1328,8 +1311,6 @@
         let generationResult = null;
         let currentMode = "shaded_forest";
         let currentFrame = 0;
-        let runtimePolicy = null;
-        let runtimeStage = "";
         const sessionId = crypto.randomUUID();
         let currentStep = 1;
 
@@ -1341,8 +1322,6 @@
             { name: "Sunset", key: "shaded_sunset" },
             { name: "Blue", key: "shaded_courtyard" }
         ];
-        const ZERO_GPU_RE = /zerogpu quota|exceeded your zerogpu quota|daily zerogpu limit|hit your daily zerogpu limit/i;
-        const ZERO_GPU_WORKER_RE = /zerogpu worker error/i;
 
         // Global queue status polling
         function startQueuePolling() {
@@ -1367,82 +1346,12 @@
             setInterval(pollQueue, 3000);
         }
 
-        function runtimeRuleLabel(ruleKey) {
-            if (!ruleKey) return 'Unavailable';
-            const match = runtimePolicy?.rules?.find((rule) => rule.key === ruleKey);
-            return match?.label || ruleKey.replace(/_/g, ' ');
-        }
-
-        function currentCpuRuleKey() {
-            if (!runtimePolicy) return 'space_cpu';
-            if (runtimePolicy.primary_runtime_key === 'local_cpu') return 'local_cpu';
-            return runtimePolicy.fallback_runtime_key || runtimePolicy.primary_runtime_key;
-        }
-
-        function markRuntimeStage(ruleKey) {
-            runtimeStage = ruleKey || '';
-            renderRuntimePolicy();
-        }
-
-        function renderRuntimePolicy() {
-            const branchEl = document.getElementById('runtime-branch');
-            const stageEl = document.getElementById('runtime-stage');
-            const primaryEl = document.getElementById('runtime-primary');
-            const fallbackEl = document.getElementById('runtime-fallback');
-            const summaryEl = document.getElementById('runtime-summary');
-            const boundaryEl = document.getElementById('runtime-boundary');
-            const orderEl = document.getElementById('runtime-order');
-
-            if (!runtimePolicy) {
-                branchEl.textContent = 'Unavailable';
-                stageEl.textContent = 'Unavailable';
-                primaryEl.textContent = 'Unavailable';
-                fallbackEl.textContent = 'Unavailable';
-                summaryEl.textContent = 'Runtime policy could not be loaded.';
-                boundaryEl.textContent = '';
-                orderEl.innerHTML = '';
-                return;
-            }
-
-            const activeStage = runtimeStage || runtimePolicy.primary_runtime_key;
-            branchEl.textContent = runtimePolicy.runtime_policy_branch === 'space' ? 'Hosted Space' : 'Local Run';
-            stageEl.textContent = runtimeRuleLabel(activeStage);
-            primaryEl.textContent = runtimeRuleLabel(runtimePolicy.primary_runtime_key);
-            fallbackEl.textContent = runtimePolicy.fallback_runtime_key
-                ? runtimeRuleLabel(runtimePolicy.fallback_runtime_key)
-                : 'None';
-            summaryEl.textContent = runtimePolicy.runtime_policy_summary;
-            boundaryEl.textContent = runtimePolicy.runtime_policy_boundary_note;
-
-            orderEl.innerHTML = '';
-            for (const ruleKey of runtimePolicy.runtime_policy_active_order || []) {
-                const chip = document.createElement('span');
-                chip.className = `runtime-chip${ruleKey === activeStage ? ' active' : ''}`;
-                chip.textContent = runtimeRuleLabel(ruleKey);
-                orderEl.appendChild(chip);
-            }
-        }
-
-        async function loadRuntimePolicy() {
-            const resp = await fetch('/runtime-policy');
-            if (!resp.ok) throw new Error('Failed to load runtime policy');
-            runtimePolicy = await resp.json();
-            runtimeStage = runtimePolicy.primary_runtime_key || '';
-            renderRuntimePolicy();
-        }
-
         async function init() {
             lucide.createIcons();
             startQueuePolling();
             try {
                 client = await Client.connect(window.location.origin);
                 setupUI();
-                try {
-                    await loadRuntimePolicy();
-                } catch (policyErr) {
-                    console.error("Runtime policy load failed:", policyErr);
-                    renderRuntimePolicy();
-                }
                 loadSamples();
             } catch (err) {
                 console.error("Connection error:", err);
@@ -1635,8 +1544,44 @@
             document.getElementById('download-btn').style.display = (num === 3) ? 'flex' : 'none';
         }
 
-        function firstResultData(result) {
-            return Array.isArray(result?.data) ? result.data[0] : result;
+        function looksLikeGenerationResult(value) {
+            return !!value
+                && typeof value === 'object'
+                && !Array.isArray(value)
+                && (
+                    'glb_path' in value
+                    || 'render_paths' in value
+                    || 'error' in value
+                    || 'state_path' in value
+                );
+        }
+
+        function firstResultData(result, depth = 0) {
+            if (depth > 4 || result == null) return null;
+            if (looksLikeGenerationResult(result)) return result;
+            if (Array.isArray(result)) {
+                for (const item of result) {
+                    const found = firstResultData(item, depth + 1);
+                    if (found) return found;
+                }
+                return result.find((item) => item != null) ?? null;
+            }
+            if (typeof result === 'object') {
+                for (const key of ['data', 'value', 'output', 'result']) {
+                    if (!(key in result)) continue;
+                    const found = firstResultData(result[key], depth + 1);
+                    if (found) return found;
+                }
+            }
+            return result;
+        }
+
+        function describeApiResult(result) {
+            try {
+                return JSON.stringify(result);
+            } catch (_) {
+                return String(result);
+            }
         }
 
         function extractErrorText(err) {
@@ -1651,31 +1596,6 @@
                 if (json && json !== '{}') parts.push(json);
             } catch (_) { }
             return parts.filter(Boolean).join(' ');
-        }
-
-        function isZeroGpuQuotaError(err) {
-            return ZERO_GPU_RE.test(extractErrorText(err));
-        }
-
-        function isZeroGpuWorkerError(err) {
-            if (!err || typeof err === 'string') return false;
-            if (ZERO_GPU_WORKER_RE.test(extractErrorText(err))) return true;
-            return err?.type === 'status'
-                && err?.stage === 'error'
-                && ZERO_GPU_WORKER_RE.test(err?.title || '');
-        }
-
-        function shouldUseCpuFallback(err) {
-            if (!runtimePolicy) return isZeroGpuQuotaError(err) || isZeroGpuWorkerError(err);
-            const hostedZeroGpuPrimary = runtimePolicy.runtime_policy_branch === 'space'
-                && runtimePolicy.primary_runtime_key === 'zerogpu';
-            return hostedZeroGpuPrimary && (isZeroGpuQuotaError(err) || isZeroGpuWorkerError(err));
-        }
-
-        function cpuFallbackReason(err) {
-            if (isZeroGpuQuotaError(err)) return 'GPU quota exhausted';
-            if (isZeroGpuWorkerError(err)) return 'ZeroGPU worker unavailable';
-            return 'Primary GPU runtime unavailable';
         }
 
         function localTmpUrl(path) {
@@ -1725,22 +1645,6 @@
             return viewer;
         }
 
-        async function runCpuGenerationFallback(params, reasonText = 'ZeroGPU worker unavailable') {
-            const endpoint = runtimePolicy?.generation_fallback_endpoint || "/generate_3d_cpu_fallback";
-            markRuntimeStage(currentCpuRuleKey());
-            showToast(`${reasonText}. Switching to CPU fallback...`);
-            const result = await client.predict(endpoint, params);
-            return firstResultData(result);
-        }
-
-        async function runCpuExtractionFallback(params, reasonText = 'ZeroGPU worker unavailable') {
-            const endpoint = runtimePolicy?.extraction_fallback_endpoint || "/extract_glb_api_cpu_fallback";
-            markRuntimeStage(currentCpuRuleKey());
-            showToast(`${reasonText}. Switching to CPU geometry export...`);
-            const result = await client.predict(endpoint, params);
-            return firstResultData(result);
-        }
-
         async function startGeneration() {
             if (!currentFile) return;
 
@@ -1750,16 +1654,16 @@
             document.getElementById('angle-slider').value = 0;
             document.getElementById('angle-display').textContent = '00';
             resetModelViewer();
+            hideViewerError();
             document.getElementById('extract-btn').style.display = 'none';
             document.getElementById('download-btn').style.display = 'none';
 
             // Stay on step 1 during generation
             setStep(1);
-            markRuntimeStage(runtimePolicy?.primary_runtime_key || 'zerogpu');
 
             showLoading();
             startProgressListener();
-            const generationEndpoint = runtimePolicy?.generation_primary_endpoint || "/generate_3d";
+            const generationEndpoint = "/generate_3d";
             const params = {
                 image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
                 seed: parseInt(document.getElementById('seed').value),
@@ -1785,44 +1689,48 @@
                 generationResult = firstResultData(result);
             } catch (err) {
                 console.error(err);
-                if (shouldUseCpuFallback(err)) {
-                    try {
-                        generationResult = await runCpuGenerationFallback(params, cpuFallbackReason(err));
-                    } catch (fallbackErr) {
-                        console.error(fallbackErr);
-                        stopProgressListener();
-                        hideLoading();
-                        showToast(extractErrorText(fallbackErr) || "CPU fallback failed.");
-                        return;
-                    }
-                } else {
-                    stopProgressListener();
-                    hideLoading();
-                    showToast(extractErrorText(err) || "An error occurred during synthesis.");
-                    return;
-                }
+                stopProgressListener();
+                hideLoading();
+                resetModelViewer();
+                showViewerError(
+                    extractErrorText(err) || 'An error occurred during synthesis.',
+                    { title: 'Generation failed' }
+                );
+                return;
             }
 
             stopProgressListener();
 
             if (generationResult?.error) {
                 hideLoading();
-                showToast(generationResult.message || "CPU fallback could not complete.");
+                resetModelViewer();
+                showViewerError(
+                    generationResult.message || 'Generation could not complete.',
+                    { title: 'Generation failed' }
+                );
                 return;
             }
 
             updateCameraInfo(generationResult);
 
-            if (generationResult?.fallback_mode === 'cpu' && generationResult?.fallback_glb_path) {
-                markRuntimeStage(currentCpuRuleKey());
-                const glbUrl = getFileUrl(generationResult.fallback_glb_path);
-                await loadViewerModel(glbUrl, 3);
+            if (!looksLikeGenerationResult(generationResult)) {
                 hideLoading();
-                showToast(generationResult.fallback_message || "CPU fallback complete.");
+                resetModelViewer();
+                showViewerError(
+                    `Unexpected generation response shape: ${describeApiResult(generationResult)}`,
+                    { title: 'Generation failed' }
+                );
                 return;
             }
 
-            markRuntimeStage(runtimePolicy?.primary_runtime_key || 'zerogpu');
+            if (generationResult?.glb_path) {
+                const glbUrl = getFileUrl(generationResult.glb_path);
+                await loadViewerModel(glbUrl, 3);
+                hideLoading();
+                showToast(generationResult.message || "3D asset ready!");
+                return;
+            }
+
             populateFrames(generationResult.render_paths);
             setStep(2);
             hideLoading();
@@ -1842,47 +1750,11 @@
             document.getElementById('progress-bar-fill').style.width = '0%';
             lastStageName = "";
 
-            // Poll every 500ms: check queue status + progress
+            // Poll every 500ms: prefer real progress, then fall back to queue hints
             let queuePollCount = 0;
             progressInterval = setInterval(async () => {
                 queuePollCount++;
                 try {
-                    // Check queue status first
-                    const qResp = await fetch(`/queue?session_id=${sessionId}`);
-                    if (qResp.ok) {
-                        const q = await qResp.json();
-                        if (q.position > 0) {
-                            // We are registered and waiting, position = number of tasks ahead
-                            document.getElementById('progress-stage-name').textContent =
-                                `In queue: ${q.position} request${q.position > 1 ? 's' : ''} ahead`;
-                            document.getElementById('progress-step-text').textContent = 'Waiting for GPU...';
-                            document.getElementById('progress-bar-fill').style.width = '0%';
-                            return;
-                        }
-                        if (q.position === -2) {
-                            // Registered, GPU is free, about to start
-                            document.getElementById('progress-stage-name').textContent = 'Connecting to GPU...';
-                            document.getElementById('progress-step-text').textContent = '';
-                            document.getElementById('progress-bar-fill').style.width = '0%';
-                            return;
-                        }
-                        if (q.position === -1) {
-                            // Not registered yet (shouldn't happen often since we call /queue/join first)
-                            if (q.total_ahead_for_unregistered > 0) {
-                                const ahead = q.total_ahead_for_unregistered;
-                                document.getElementById('progress-stage-name').textContent =
-                                    `In queue: ${ahead} request${ahead > 1 ? 's' : ''} ahead`;
-                                document.getElementById('progress-step-text').textContent = 'Waiting for GPU...';
-                            } else {
-                                document.getElementById('progress-stage-name').textContent = 'Connecting to GPU...';
-                                document.getElementById('progress-step-text').textContent = '';
-                            }
-                            document.getElementById('progress-bar-fill').style.width = '0%';
-                            return;
-                        }
-                        // position == 0 means we are currently running
-                    }
-
                     const resp = await fetch(`/progress?session_id=${sessionId}`);
                     if (!resp.ok) return;
                     const data = await resp.json();
@@ -1890,14 +1762,42 @@
                         stopProgressListener();
                         return;
                     }
-                    // Don't show bare "Waiting..." from empty progress file
-                    if (data.stage === "Waiting..." && data.step === 0 && data.total === 0) {
-                        document.getElementById('progress-stage-name').textContent = 'Preparing inference...';
+                    const hasMeaningfulProgress = !(
+                        data.stage === "Waiting..." && data.step === 0 && data.total === 0
+                    );
+                    if (hasMeaningfulProgress) {
+                        updateProgressUI(data);
+                        return;
+                    }
+
+                    const qResp = await fetch(`/queue?session_id=${sessionId}`);
+                    if (!qResp.ok) return;
+                    const q = await qResp.json();
+                    if (q.position > 0) {
+                        document.getElementById('progress-stage-name').textContent =
+                            `In queue: ${q.position} request${q.position > 1 ? 's' : ''} ahead`;
+                        document.getElementById('progress-step-text').textContent = 'Waiting for GPU...';
+                        document.getElementById('progress-bar-fill').style.width = '0%';
+                        return;
+                    }
+                    if (q.position === -2) {
+                        document.getElementById('progress-stage-name').textContent = 'Connecting to GPU...';
                         document.getElementById('progress-step-text').textContent = '';
                         document.getElementById('progress-bar-fill').style.width = '0%';
                         return;
                     }
-                    updateProgressUI(data);
+                    if (q.position === -1) {
+                        if (q.total_ahead_for_unregistered > 0) {
+                            const ahead = q.total_ahead_for_unregistered;
+                            document.getElementById('progress-stage-name').textContent =
+                                `In queue: ${ahead} request${ahead > 1 ? 's' : ''} ahead`;
+                            document.getElementById('progress-step-text').textContent = 'Waiting for GPU...';
+                        } else {
+                            document.getElementById('progress-stage-name').textContent = 'Preparing inference...';
+                            document.getElementById('progress-step-text').textContent = '';
+                        }
+                        document.getElementById('progress-bar-fill').style.width = '0%';
+                    }
                 } catch (e) { }
             }, 500);
         }
@@ -1988,9 +1888,43 @@
             mv.style.background = 'radial-gradient(circle at 50% 50%, #1a2235 0%, #0b0f1a 100%)';
             mv.style.visibility = 'hidden';
             mv.innerHTML = '<div slot="progress-bar" style="background: var(--primary); height: 4px;"></div>';
-            container.appendChild(mv);
+            // Insert BEFORE the error overlay so the overlay stays on top in DOM order
+            const overlay = document.getElementById('viewer-error');
+            if (overlay) container.insertBefore(mv, overlay);
+            else container.appendChild(mv);
             return mv;
         }
+
+        function hideViewerError() {
+            const el = document.getElementById('viewer-error');
+            if (el) el.classList.remove('show');
+        }
+
+        function showViewerError(message, opts) {
+            const el = document.getElementById('viewer-error');
+            if (!el) return;
+            const title = (opts && opts.title) || 'Generation could not complete';
+            document.getElementById('viewer-error-title').textContent = title;
+            document.getElementById('viewer-error-message').textContent =
+                (message && String(message).trim()) || 'An unknown error occurred.';
+            el.classList.add('show');
+            // Make sure the user actually sees it: jump to the result tab
+            if (typeof setStep === 'function') setStep(3);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const copyBtn = document.getElementById('viewer-error-copy');
+            const dismissBtn = document.getElementById('viewer-error-dismiss');
+            if (copyBtn) copyBtn.addEventListener('click', async () => {
+                const msg = document.getElementById('viewer-error-message').textContent || '';
+                try {
+                    await navigator.clipboard.writeText(msg);
+                    copyBtn.textContent = 'Copied';
+                    setTimeout(() => { copyBtn.textContent = 'Copy details'; }, 1500);
+                } catch (_) { /* clipboard unavailable */ }
+            });
+            if (dismissBtn) dismissBtn.addEventListener('click', hideViewerError);
+        });
 
         async function startExtraction() {
             if (!generationResult) return;
@@ -2003,8 +1937,7 @@
 
             showLoading();
             startProgressListener();
-            markRuntimeStage(runtimePolicy?.primary_runtime_key || 'zerogpu');
-            const extractionEndpoint = runtimePolicy?.extraction_primary_endpoint || "/extract_glb_api";
+            const extractionEndpoint = "/extract_glb_api";
             const params = {
                 state_path: generationResult.state_path,
                 decimation_target: parseInt(document.getElementById('decimation').value),
@@ -2024,24 +1957,6 @@
                 showToast("3D Asset ready!");
             } catch (err) {
                 console.error(err);
-                if (shouldUseCpuFallback(err)) {
-                    try {
-                        const fallbackFile = await runCpuExtractionFallback(params, cpuFallbackReason(err));
-                        const glbUrl = getFileUrl(fallbackFile);
-                        stopProgressListener();
-                        await loadViewerModel(glbUrl, 3);
-                        hideLoading();
-                        showToast("CPU geometry export ready!");
-                        return;
-                    } catch (fallbackErr) {
-                        console.error(fallbackErr);
-                        stopProgressListener();
-                        viewer.style.visibility = 'visible';
-                        hideLoading();
-                        showToast(extractErrorText(fallbackErr) || "CPU extraction fallback failed.");
-                        return;
-                    }
-                }
                 stopProgressListener();
                 viewer.style.visibility = 'visible';
                 hideLoading();

@@ -89,7 +89,7 @@ Each tooltip includes:
 
 #### Example Tooltip Content
 
-```
+```text
 SS Guidance Strength
 
 Controls how strictly model follows semantic structure guidance.
@@ -174,7 +174,7 @@ Controls how strictly model follows semantic structure guidance.
 
 2. **Recommended Decimation Values**
 
-   ```
+   ```text
    Web standard (good balance):    500K triangles
    High quality (professional):    1M triangles (full)
    Mobile optimized:               250K triangles
@@ -199,7 +199,7 @@ Controls how strictly model follows semantic structure guidance.
 
 ### Fast Preview (8-12 seconds)
 
-```
+```text
 Resolution: 1024
 ss_steps: 6, shape_steps: 8, tex_steps: 8
 Guidance: 7.5, 7.5, 1.0
@@ -208,7 +208,7 @@ Decimation: 500K
 
 ### Production (15-25 seconds) ← Recommended
 
-```
+```text
 Resolution: 1536
 ss_steps: 12, shape_steps: 12, tex_steps: 12
 Guidance: 7.5, 7.5, 1.0
@@ -217,7 +217,7 @@ Decimation: 1M
 
 ### High Quality (25-40 seconds)
 
-```
+```text
 Resolution: 1536
 ss_steps: 20, shape_steps: 24, tex_steps: 24
 Guidance: 8.0, 8.0, 1.0
@@ -226,7 +226,7 @@ Decimation: 1M
 
 ### Creative/Artistic (12-20 seconds)
 
-```
+```text
 Resolution: 1024
 ss_steps: 12, shape_steps: 12, tex_steps: 12
 Guidance: 6.0, 6.5, 0.5

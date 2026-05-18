@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pixal3D Validation Viewer</title>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
+    <style>
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            background: #10131c;
+            color: #f4f7fb;
+            font-family: sans-serif;
+        }
+
+        .wrap {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            height: 100%;
+        }
+
+        header {
+            padding: 12px 16px;
+            background: #161b27;
+            border-bottom: 1px solid #2b3345;
+        }
+
+        model-viewer {
+            width: 100%;
+            height: 100%;
+            --progress-bar-color: #7c83ff;
+            background: radial-gradient(circle at top, #273149 0%, #10131c 65%);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <header>Pixal3D validation render: browser-generated fallback GLB</header>
+        <model-viewer id="viewer" src="./outputs/ca427135-4504-44aa-b8e6-fc242ec8857b.glb" camera-controls auto-rotate
+            exposure="1.0"></model-viewer>
+    </div>
+</body>
+
+</html>

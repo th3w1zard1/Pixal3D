@@ -9,6 +9,38 @@ __all__ = [
 ]
 
 
+def _naive_attention_block(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    out_dtype = v.dtype
+    q_float = q.float().permute(1, 0, 2)
+    k_float = k.float().permute(1, 0, 2)
+    v_float = v.float().permute(1, 0, 2)
+    attn_scores = torch.matmul(q_float, k_float.transpose(-2, -1)) * (q.shape[-1] ** -0.5)
+    attn_weights = torch.softmax(attn_scores, dim=-1)
+    return torch.matmul(attn_weights, v_float).permute(1, 0, 2).to(out_dtype)
+
+
+def _naive_varlen_attention(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    q_seqlen: Sequence[int],
+    kv_seqlen: Sequence[int],
+) -> torch.Tensor:
+    outputs = []
+    q_start = 0
+    kv_start = 0
+    for q_len, kv_len in zip((int(x) for x in q_seqlen), (int(x) for x in kv_seqlen)):
+        q_slice = q[q_start : q_start + q_len]
+        k_slice = k[kv_start : kv_start + kv_len]
+        v_slice = v[kv_start : kv_start + kv_len]
+        outputs.append(_naive_attention_block(q_slice, k_slice, v_slice))
+        q_start += q_len
+        kv_start += kv_len
+    if outputs:
+        return torch.cat(outputs, dim=0)
+    return q.new_empty((0, q.shape[-2], v.shape[-1]))
+
+
 @overload
 def sparse_scaled_dot_product_attention(qkv: VarLenTensor) -> VarLenTensor:
     """
@@ -164,7 +196,8 @@ def sparse_scaled_dot_product_attention(*args, **kwargs):
         else:
             assert len(k.shape) == 4, f"Invalid shape for k, got {k.shape}, expected [N, L, H, Ci]"
             assert len(v.shape) == 4, f"Invalid shape for v, got {v.shape}, expected [N, L, H, Co]"
-            N, L, H, CI, CO = *k.shape, v.shape[-1]
+            N, L, H, CI = k.shape
+            CO = v.shape[-1]
             kv_seqlen = [L] * N
             k = k.reshape(N * L, H, CI)     # [T_KV, H, Ci]
             v = v.reshape(N * L, H, CO)     # [T_KV, H, Co]
@@ -229,6 +262,12 @@ def sparse_scaled_dot_product_attention(*args, **kwargs):
             max_q_seqlen = max(q_seqlen)
             max_kv_seqlen = max(kv_seqlen)
         out, _ = flash_attn_4_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, max_q_seqlen, max_kv_seqlen)
+    elif config.ATTN == 'naive':
+        if num_all_args == 1:
+            q, k, v = qkv.unbind(dim=1)
+        elif num_all_args == 2:
+            k, v = kv.unbind(dim=1)
+        out = _naive_varlen_attention(q, k, v, q_seqlen, kv_seqlen)
     else:
         raise ValueError(f"Unknown attention module: {config.ATTN}")
 

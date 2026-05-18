@@ -35,7 +35,7 @@ _PENDING_TIMEOUT = 600
 
 os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-os.environ["ATTN_BACKEND"] = "flash_attn_2"
+os.environ.setdefault("ATTN_BACKEND", "flash_attn_2")
 os.environ["FLEX_GEMM_AUTOTUNE_CACHE_PATH"] = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "autotune_cache.json"
 )
@@ -59,13 +59,7 @@ from fastapi.staticfiles import StaticFiles
 from gradio import Server
 from gradio.data_classes import FileData
 
-from runtime_policy import (
-    build_runtime_policy_payload,
-    primary_execution_device,
-    resolve_extraction_plan,
-    resolve_generation_plan,
-    runtime_rule_reason,
-)
+from api_payload_utils import resolve_file_path
 from space_bootstrap import build_runtime_config, prepare_pipeline_directory
 from space_runtime import (
     ModelInitState,
@@ -117,7 +111,7 @@ MOGE_MODEL_NAME = "Ruicheng/moge-2-vitl"
 WILD_MESH_SCALE = 1.0
 WILD_EXTEND_PIXEL = 0
 WILD_IMAGE_RESOLUTION = 512
-CPU_FALLBACK_AUTO_FOV_RADIANS = 0.2
+CPU_AUTO_FOV_RADIANS = 0.2
 
 # Image Cond Model configs
 IMAGE_COND_CONFIGS = {
@@ -182,7 +176,7 @@ resolved_pipeline_dir = None
 runtime_state = ModelInitState()
 warmup_thread = None
 preprocess_lock = threading.Lock()
-current_runtime_device = primary_execution_device(os.environ, torch.cuda.is_available())
+current_runtime_device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def _default_dense_attn_backend() -> str:
@@ -199,7 +193,84 @@ def _default_dense_attn_backend() -> str:
     return mapping.get(configured, "flash_attn")
 
 
+def _default_sparse_attn_backend() -> str:
+    configured = os.environ.get(
+        "SPARSE_ATTN_BACKEND",
+        os.environ.get("ATTN_BACKEND", "flash_attn"),
+    )
+    mapping = {
+        "flash_attn": "flash_attn",
+        "flash_attn_2": "flash_attn",
+        "flash_attn_3": "flash_attn_3",
+        "flash_attn_4": "flash_attn_4",
+        "xformers": "xformers",
+        "naive": "naive",
+    }
+    return mapping.get(configured, "flash_attn")
+
+
 DEFAULT_ATTN_BACKEND = _default_dense_attn_backend()
+DEFAULT_SPARSE_ATTN_BACKEND = _default_sparse_attn_backend()
+
+
+def resolve_runtime_mode(
+    env: Mapping[str, str] | None = None,
+    cuda_available: bool | None = None,
+) -> str:
+    env = env or os.environ
+    if cuda_available is None:
+        cuda_available = torch.cuda.is_available()
+    if cuda_available:
+        accelerator = (env.get("ACCELERATOR") or "").strip().lower()
+        if accelerator.startswith("zero"):
+            return "zerogpu"
+        return "gpu"
+    return "cpu"
+
+
+def resolve_execution_device(
+    env: Mapping[str, str] | None = None,
+    cuda_available: bool | None = None,
+) -> str:
+    del env
+    if cuda_available is None:
+        cuda_available = torch.cuda.is_available()
+    return "cuda" if cuda_available else "cpu"
+
+
+def resolve_generation_plan(
+    env: Mapping[str, str] | None = None,
+    cuda_available: bool | None = None,
+) -> dict[str, object]:
+    device = resolve_execution_device(env, cuda_available)
+    return {
+        "execution_device": device,
+        "render_preview": device == "cuda",
+        "runtime_mode": resolve_runtime_mode(env, cuda_available),
+    }
+
+
+def resolve_extraction_plan(
+    env: Mapping[str, str] | None = None,
+    cuda_available: bool | None = None,
+) -> dict[str, object]:
+    return {
+        "execution_device": resolve_execution_device(env, cuda_available),
+        "runtime_mode": resolve_runtime_mode(env, cuda_available),
+    }
+
+
+def _remove_pending_session_locked(session_id: str) -> None:
+    if not session_id:
+        return
+    if session_id in _pending_sessions:
+        _pending_sessions.remove(session_id)
+    _pending_times.pop(session_id, None)
+
+
+def _remove_pending_session(session_id: str) -> None:
+    with _queue_lock:
+        _remove_pending_session_locked(session_id)
 
 
 @contextmanager
@@ -215,9 +286,7 @@ def acquire_inference(session_id: str = ""):
     try:
         with inference_lock:
             with _queue_lock:
-                if session_id and session_id in _pending_sessions:
-                    _pending_sessions.remove(session_id)
-                _pending_times.pop(session_id, None)
+                _remove_pending_session_locked(session_id)
                 _queue_running_session = session_id
                 _queue_start_time = time.time()
             try:
@@ -228,9 +297,7 @@ def acquire_inference(session_id: str = ""):
                     _queue_start_time = 0.0
     except BaseException:
         with _queue_lock:
-            if session_id and session_id in _pending_sessions:
-                _pending_sessions.remove(session_id)
-            _pending_times.pop(session_id, None)
+            _remove_pending_session_locked(session_id)
         raise
 
 
@@ -238,13 +305,23 @@ def _normalize_device(device: str | torch.device) -> torch.device:
     return device if isinstance(device, torch.device) else torch.device(device)
 
 
+def _runtime_low_vram_enabled() -> bool:
+    return os.environ.get("PIXAL3D_LOW_VRAM") == "1"
+
+
 def _set_dense_attention_backend(device: str | torch.device) -> None:
     from trellis2.modules.attention import config as attention_config
+    from trellis2.modules.sparse import config as sparse_config
 
     normalized = _normalize_device(device)
     backend = "sdpa" if normalized.type == "cpu" else DEFAULT_ATTN_BACKEND
+    sparse_backend = (
+        "naive" if normalized.type == "cpu" else DEFAULT_SPARSE_ATTN_BACKEND
+    )
     attention_config.set_backend(backend)  # pyright: ignore[reportArgumentType]
+    sparse_config.set_attn_backend(sparse_backend)  # pyright: ignore[reportArgumentType]
     print(f"[Runtime] Dense attention backend set to: {backend}")
+    print(f"[Runtime] Sparse attention backend set to: {sparse_backend}")
 
 
 def move_runtime_to(device: str | torch.device) -> None:
@@ -265,39 +342,21 @@ def move_runtime_to(device: str | torch.device) -> None:
     else:
         pipeline.cpu()
 
-    for attr in [
-        "image_cond_model_ss",
-        "image_cond_model_shape_512",
-        "image_cond_model_shape_1024",
-        "image_cond_model_tex_1024",
-    ]:
-        model = getattr(pipeline, attr, None)
-        if model is not None:
-            model.to(normalized)
+    if not _runtime_low_vram_enabled():
+        for attr in [
+            "image_cond_model_ss",
+            "image_cond_model_shape_512",
+            "image_cond_model_shape_1024",
+            "image_cond_model_tex_1024",
+        ]:
+            model = getattr(pipeline, attr, None)
+            if model is not None:
+                model.to(normalized)
 
-    if moge_model is not None:
-        moge_model.to(normalized)
+        if moge_model is not None:
+            moge_model.to(normalized)
 
     current_runtime_device = target
-
-
-def is_zerogpu_quota_error(exc: Exception) -> bool:
-    text = str(exc).lower()
-    return "zerogpu quota" in text or "exceeded your zerogpu quota" in text
-
-
-def build_cpu_fallback_error(
-    cpu_exc: Exception,
-    fallback_rule_key: str = "space_cpu",
-    trigger_message: str = "The primary runtime path failed",
-) -> str:
-    fallback_name = fallback_rule_key.replace("_", " ")
-    return (
-        f"{trigger_message}, so Pixal3D attempted the {fallback_name} path. "
-        f"{runtime_rule_reason(fallback_rule_key)} "
-        "This build still depends on GPU-only sparse kernels for full 3D generation, "
-        f"so the CPU retry could not complete: {type(cpu_exc).__name__}: {cpu_exc}"
-    )
 
 
 def export_basic_glb(mesh, session_id: str = "") -> str:
@@ -336,7 +395,7 @@ def resolve_pipeline_source(model_path: str) -> str:
 def resolve_runtime_init_device(preferred_device: str | None = None) -> str:
     if preferred_device:
         return _normalize_device(preferred_device).type
-    return primary_execution_device(os.environ, torch.cuda.is_available())
+    return resolve_execution_device(os.environ, torch.cuda.is_available())
 
 
 def initialize_runtime(preferred_device: str | None = None):
@@ -432,21 +491,23 @@ def init_models(preferred_device: str | None = None):
             IMAGE_COND_CONFIGS["tex_1024"]
         )
 
-        pipeline.low_vram = False
+        low_vram_mode = _runtime_low_vram_enabled()
+        pipeline.low_vram = low_vram_mode
         if initial_device == "cuda":
             pipeline.cuda()
         else:
             pipeline.cpu()
 
-        for attr in [
-            "image_cond_model_ss",
-            "image_cond_model_shape_512",
-            "image_cond_model_shape_1024",
-            "image_cond_model_tex_1024",
-        ]:
-            model = getattr(pipeline, attr, None)
-            if model is not None:
-                model.to(normalized_initial_device)
+        if not low_vram_mode:
+            for attr in [
+                "image_cond_model_ss",
+                "image_cond_model_shape_512",
+                "image_cond_model_shape_1024",
+                "image_cond_model_tex_1024",
+            ]:
+                model = getattr(pipeline, attr, None)
+                if model is not None:
+                    model.to(normalized_initial_device)
 
         print("[NAF] Pre-loading NAF upsampler model...")
         for attr in [
@@ -460,10 +521,11 @@ def init_models(preferred_device: str | None = None):
                 model._load_naf()
 
         print("[MoGe-2] Loading model for camera estimation...")
-        moge_model = load_moge_model(device=initial_device)
+        moge_model = load_moge_model(device="cpu" if low_vram_mode else initial_device)
 
         print("[EnvMap] Loading environment maps...")
         _base = os.path.dirname(os.path.abspath(__file__))
+        envmap_device = "cpu" if low_vram_mode else initial_device
         envmap = {
             "forest": EnvMap(
                 torch.tensor(
@@ -475,7 +537,7 @@ def init_models(preferred_device: str | None = None):
                         cv2.COLOR_BGR2RGB,
                     ),
                     dtype=torch.float32,
-                    device=initial_device,
+                    device=envmap_device,
                 )
             ),
             "sunset": EnvMap(
@@ -488,7 +550,7 @@ def init_models(preferred_device: str | None = None):
                         cv2.COLOR_BGR2RGB,
                     ),
                     dtype=torch.float32,
-                    device=initial_device,
+                    device=envmap_device,
                 )
             ),
             "courtyard": EnvMap(
@@ -501,7 +563,7 @@ def init_models(preferred_device: str | None = None):
                         cv2.COLOR_BGR2RGB,
                     ),
                     dtype=torch.float32,
-                    device=initial_device,
+                    device=envmap_device,
                 )
             ),
         }
@@ -599,12 +661,17 @@ def distance_from_fov(
 def get_camera_params_wild_moge(
     image_path, device="cuda", mesh_scale=1.0, extend_pixel=0, image_resolution=512
 ):
+    low_vram_mode = _runtime_low_vram_enabled()
+    if low_vram_mode:
+        moge_model.to(device)
     pil_image = Image.open(image_path).convert("RGB")
     width, height = pil_image.size
     image_np = np.array(pil_image).astype(np.float32) / 255.0
     image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).to(device)
     with torch.no_grad():
         output = moge_model.infer(image_tensor)
+    if low_vram_mode:
+        moge_model.cpu()
     intrinsics = output["intrinsics"].squeeze().cpu().numpy()
     fx_normalized = intrinsics[0, 0]
     fx = fx_normalized * width
@@ -803,11 +870,11 @@ def _build_camera_params(
 
     if _normalize_device(execution_device).type == "cpu":
         print(
-            "[Camera] CPU execution detected; skipping MoGe auto-estimation and using the deterministic 0.2 rad fallback."
+            "[Camera] CPU execution detected; skipping MoGe auto-estimation and using the deterministic 0.2 rad default."
         )
         return build_camera_params_from_fov(
-            CPU_FALLBACK_AUTO_FOV_RADIANS,
-            "CPU fallback auto FOV",
+            CPU_AUTO_FOV_RADIANS,
+            "CPU auto FOV",
         )
 
     return get_camera_params_wild_moge(
@@ -817,6 +884,10 @@ def _build_camera_params(
         extend_pixel=WILD_EXTEND_PIXEL,
         image_resolution=WILD_IMAGE_RESOLUTION,
     )
+
+
+def resolve_pipeline_type(hr_resolution: int) -> str:
+    return "1024" if hr_resolution <= 1024 else "1536_cascade"
 
 
 def _generate_3d_impl(
@@ -859,7 +930,8 @@ def _generate_3d_impl(
     torch.manual_seed(seed)
     hr_resolution = int(resolution)
 
-    img = Image.open(image["path"])
+    image_path = resolve_file_path(image)
+    img = Image.open(image_path)
     image_preprocessed = img
     temp_processed_path = os.path.join(
         TMP_DIR, f"temp_proc_{session_id[:8]}_{int(time.time() * 1000)}.png"
@@ -893,7 +965,7 @@ def _generate_3d_impl(
         "rescale_t": tex_slat_rescale_t,
     }
 
-    pipeline_type = f"{hr_resolution}_cascade"
+    pipeline_type = resolve_pipeline_type(hr_resolution)
     mesh_list, (shape_slat, tex_slat, res) = pipeline.run(
         image_preprocessed,
         camera_params=camera_params,
@@ -955,17 +1027,16 @@ def _generate_3d_impl(
             }
         )
     else:
-        _update_progress("Exporting CPU fallback GLB", 0, 1)
-        fallback_glb_path = export_basic_glb(mesh, session_id=session_id)
-        _update_progress("Exporting CPU fallback GLB", 1, 1)
+        _update_progress("Exporting CPU GLB", 0, 1)
+        glb_path = export_basic_glb(mesh, session_id=session_id)
+        _update_progress("Exporting CPU GLB", 1, 1)
         result.update(
             {
                 "render_paths": {},
                 "preview_available": False,
                 "extract_available": False,
-                "fallback_mode": "cpu",
-                "fallback_glb_path": os.path.abspath(fallback_glb_path),
-                "fallback_message": "ZeroGPU quota exhausted. Generated a geometry-only CPU fallback asset.",
+                "glb_path": os.path.abspath(glb_path),
+                "message": "Generated a geometry-only GLB on CPU hardware.",
             }
         )
 
@@ -997,9 +1068,9 @@ def _extract_glb_impl(
     _update_progress("Decoding latent", 1, 1)
 
     if execution_device == "cpu":
-        _update_progress("Exporting CPU fallback GLB", 0, 1)
+        _update_progress("Exporting CPU GLB", 0, 1)
         out_glb = export_basic_glb(mesh, session_id=session_id)
-        _update_progress("Exporting CPU fallback GLB", 1, 1)
+        _update_progress("Exporting CPU GLB", 1, 1)
         _finish_progress()
         return FileData(path=out_glb)
 
@@ -1059,7 +1130,7 @@ def generation_gpu_duration(
 ) -> int:
     # Keep synthesis inside a small post-warmup ZeroGPU slice; cold model
     # initialization is handled separately by `warmup_runtime`.
-    return 60
+    return 60 if resolution <= 1024 else 180
 
 
 def extract_glb_gpu_duration(
@@ -1080,14 +1151,15 @@ app = Server()
 
 def runtime_payload() -> dict[str, object]:
     payload = runtime_state.snapshot()
+    cuda_available = torch.cuda.is_available()
     payload["warmup_on_start"] = runtime_config.warmup_on_start
     payload["pipeline_resolved"] = resolved_pipeline_dir is not None
-    payload.update(
-        build_runtime_policy_payload(
-            os.environ,
-            cuda_available=torch.cuda.is_available(),
-        )
-    )
+    payload["current_runtime_device"] = current_runtime_device
+    payload["runtime_mode"] = resolve_runtime_mode(os.environ, cuda_available)
+    payload["cuda_available"] = cuda_available
+    payload["accelerator"] = os.environ.get("ACCELERATOR") or "unknown"
+    payload["space_id"] = os.environ.get("SPACE_ID") or ""
+    payload["preview_available"] = cuda_available
     return payload
 
 
@@ -1100,20 +1172,7 @@ async def homepage():
 
 @app.get("/health")
 async def health():
-    payload = runtime_payload()
-    payload["current_runtime_device"] = current_runtime_device
-    payload["cpu_fallback_mode"] = "experimental"
-    payload["cpu_fallback_available"] = True
-    return JSONResponse(payload)
-
-
-@app.get("/runtime-policy")
-async def runtime_policy():
-    payload = runtime_payload()
-    payload["current_runtime_device"] = current_runtime_device
-    payload["cpu_fallback_mode"] = "experimental"
-    payload["cpu_fallback_available"] = True
-    return JSONResponse(payload)
+    return JSONResponse(runtime_payload())
 
 
 @app.get("/ready")
@@ -1149,6 +1208,13 @@ async def queue_join(request: Request):
             ):
                 _pending_sessions.append(session_id)
                 _pending_times[session_id] = time.time()
+    return JSONResponse({"ok": True})
+
+
+@app.get("/queue/leave")
+async def queue_leave(request: Request):
+    session_id = request.query_params.get("session_id", "")
+    _remove_pending_session(session_id)
     return JSONResponse({"ok": True})
 
 
@@ -1193,7 +1259,7 @@ async def queue_status(request: Request):
 
 @app.api()
 def preprocess(image: FileData) -> FileData:
-    img = Image.open(image["path"])
+    img = Image.open(resolve_file_path(image))
     processed = preprocess_image_for_ui(img)
     out_path = os.path.join(TMP_DIR, f"preprocessed_{int(time.time() * 1000)}.png")
     processed.save(out_path)
@@ -1267,100 +1333,11 @@ def generate_3d(
 
 
 @app.api()
-def generate_3d_cpu_fallback(
-    image: FileData,
-    seed: int,
-    resolution: int,
-    ss_guidance_strength: float = 7.5,
-    ss_guidance_rescale: float = 0.7,
-    ss_sampling_steps: int = 12,
-    ss_rescale_t: float = 5.0,
-    shape_slat_guidance_strength: float = 7.5,
-    shape_slat_guidance_rescale: float = 0.5,
-    shape_slat_sampling_steps: int = 12,
-    shape_slat_rescale_t: float = 3.0,
-    tex_slat_guidance_strength: float = 1.0,
-    tex_slat_guidance_rescale: float = 0.0,
-    tex_slat_sampling_steps: int = 12,
-    tex_slat_rescale_t: float = 3.0,
-    manual_fov: float = -1.0,
-    fov_unit: str = "deg",
-    session_id: str = "",
-) -> Dict:
-    plan = resolve_generation_plan(
-        os.environ,
-        torch.cuda.is_available(),
-        use_fallback=True,
-    )
-    fallback_rule_key = cast(str, plan["selected_rule_key"])
-    with acquire_inference(session_id):
-        try:
-            return _generate_3d_impl(
-                image=image,
-                seed=seed,
-                resolution=resolution,
-                ss_guidance_strength=ss_guidance_strength,
-                ss_guidance_rescale=ss_guidance_rescale,
-                ss_sampling_steps=ss_sampling_steps,
-                ss_rescale_t=ss_rescale_t,
-                shape_slat_guidance_strength=shape_slat_guidance_strength,
-                shape_slat_guidance_rescale=shape_slat_guidance_rescale,
-                shape_slat_sampling_steps=shape_slat_sampling_steps,
-                shape_slat_rescale_t=shape_slat_rescale_t,
-                tex_slat_guidance_strength=tex_slat_guidance_strength,
-                tex_slat_guidance_rescale=tex_slat_guidance_rescale,
-                tex_slat_sampling_steps=tex_slat_sampling_steps,
-                tex_slat_rescale_t=tex_slat_rescale_t,
-                manual_fov=manual_fov,
-                fov_unit=fov_unit,
-                session_id=session_id,
-                execution_device=cast(str, plan["execution_device"]),
-                render_preview=bool(plan["render_preview"]),
-            )
-        except Exception as cpu_exc:
-            _fail_progress("CPU fallback unavailable", cpu_exc)
-            return {
-                "error": True,
-                "fallback_mode": "cpu",
-                "message": build_cpu_fallback_error(
-                    cpu_exc,
-                    fallback_rule_key=fallback_rule_key,
-                    trigger_message="ZeroGPU quota was exhausted",
-                ),
-                "render_paths": {},
-                "state_path": "",
-                "camera_angle_x": None,
-                "distance": None,
-                "preview_available": False,
-                "extract_available": False,
-            }
-
-
-@app.api()
 @spaces.GPU(duration=extract_glb_gpu_duration)
 def extract_glb_api(
     state_path: str, decimation_target: int, texture_size: int, session_id: str = ""
 ) -> FileData:
     plan = resolve_extraction_plan(os.environ, torch.cuda.is_available())
-    with acquire_inference(session_id):
-        return _extract_glb_impl(
-            state_path=state_path,
-            decimation_target=decimation_target,
-            texture_size=texture_size,
-            session_id=session_id,
-            execution_device=cast(str, plan["execution_device"]),
-        )
-
-
-@app.api()
-def extract_glb_api_cpu_fallback(
-    state_path: str, decimation_target: int, texture_size: int, session_id: str = ""
-) -> FileData:
-    plan = resolve_extraction_plan(
-        os.environ,
-        torch.cuda.is_available(),
-        use_fallback=True,
-    )
     with acquire_inference(session_id):
         return _extract_glb_impl(
             state_path=state_path,
