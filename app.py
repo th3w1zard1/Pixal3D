@@ -101,6 +101,9 @@ MODES = [
     },
 ]
 STEPS = 8
+ZEROGPU_MAX_DURATION_SECONDS = 120
+ZEROGPU_MAX_RESOLUTION = 1024
+ZEROGPU_MAX_STAGE_STEPS = 5
 
 # Cascade parameters
 CASCADE_LR_RESOLUTION = 512
@@ -257,6 +260,55 @@ def resolve_extraction_plan(
     return {
         "execution_device": resolve_execution_device(env, cuda_available),
         "runtime_mode": resolve_runtime_mode(env, cuda_available),
+    }
+
+
+def normalize_generation_request(
+    resolution: int,
+    ss_sampling_steps: int,
+    shape_slat_sampling_steps: int,
+    tex_slat_sampling_steps: int,
+    env: Mapping[str, str] | None = None,
+    cuda_available: bool | None = None,
+) -> dict[str, object]:
+    runtime_mode = resolve_runtime_mode(env, cuda_available)
+    normalized_resolution = int(resolution)
+    normalized_ss_steps = int(ss_sampling_steps)
+    normalized_shape_steps = int(shape_slat_sampling_steps)
+    normalized_tex_steps = int(tex_slat_sampling_steps)
+    messages: list[str] = []
+
+    if runtime_mode == "zerogpu":
+        if normalized_resolution > ZEROGPU_MAX_RESOLUTION:
+            normalized_resolution = ZEROGPU_MAX_RESOLUTION
+            messages.append(
+                "ZeroGPU currently caps hosted generation at 1024 resolution."
+            )
+
+        capped_steps = {
+            "ss": min(normalized_ss_steps, ZEROGPU_MAX_STAGE_STEPS),
+            "shape": min(normalized_shape_steps, ZEROGPU_MAX_STAGE_STEPS),
+            "tex": min(normalized_tex_steps, ZEROGPU_MAX_STAGE_STEPS),
+        }
+        if (
+            capped_steps["ss"] != normalized_ss_steps
+            or capped_steps["shape"] != normalized_shape_steps
+            or capped_steps["tex"] != normalized_tex_steps
+        ):
+            normalized_ss_steps = capped_steps["ss"]
+            normalized_shape_steps = capped_steps["shape"]
+            normalized_tex_steps = capped_steps["tex"]
+            messages.append(
+                "ZeroGPU currently caps sampling at 5 steps per stage to stay inside the hosted runtime window."
+            )
+
+    return {
+        "runtime_mode": runtime_mode,
+        "resolution": normalized_resolution,
+        "ss_sampling_steps": normalized_ss_steps,
+        "shape_slat_sampling_steps": normalized_shape_steps,
+        "tex_slat_sampling_steps": normalized_tex_steps,
+        "messages": messages,
     }
 
 
@@ -928,7 +980,19 @@ def _generate_3d_impl(
 
     _update_progress("Preprocessing & Camera Estimation", 0, 1)
     torch.manual_seed(seed)
-    hr_resolution = int(resolution)
+    request_settings = normalize_generation_request(
+        resolution=resolution,
+        ss_sampling_steps=ss_sampling_steps,
+        shape_slat_sampling_steps=shape_slat_sampling_steps,
+        tex_slat_sampling_steps=tex_slat_sampling_steps,
+        env=os.environ,
+        cuda_available=torch.cuda.is_available(),
+    )
+    hr_resolution = cast(int, request_settings["resolution"])
+    ss_sampling_steps = cast(int, request_settings["ss_sampling_steps"])
+    shape_slat_sampling_steps = cast(int, request_settings["shape_slat_sampling_steps"])
+    tex_slat_sampling_steps = cast(int, request_settings["tex_slat_sampling_steps"])
+    runtime_messages = cast(list[str], request_settings["messages"])
 
     image_path = resolve_file_path(image)
     img = Image.open(image_path)
@@ -985,6 +1049,13 @@ def _generate_3d_impl(
         "state_path": os.path.abspath(state_path),
         "camera_angle_x": camera_params["camera_angle_x"],
         "distance": camera_params["distance"],
+        "requested_resolution": int(resolution),
+        "effective_resolution": hr_resolution,
+        "effective_sampling_steps": {
+            "ss": ss_sampling_steps,
+            "shape": shape_slat_sampling_steps,
+            "tex": tex_slat_sampling_steps,
+        },
         "error": False,
     }
 
@@ -1016,7 +1087,7 @@ def _generate_3d_impl(
                     )
                 )
                 Image.fromarray(frame).save(p, quality=85)
-                mode_files.append(FileData(path=p))
+                mode_files.append(p)
             render_files[mode_key] = mode_files
 
         result.update(
@@ -1039,6 +1110,13 @@ def _generate_3d_impl(
                 "message": "Generated a geometry-only GLB on CPU hardware.",
             }
         )
+
+    if runtime_messages:
+        existing_message = result.get("message")
+        message_parts = list(runtime_messages)
+        if existing_message:
+            message_parts.append(str(existing_message))
+        result["message"] = " ".join(message_parts)
 
     _finish_progress()
     return result
@@ -1128,8 +1206,24 @@ def generation_gpu_duration(
     fov_unit: str = "deg",
     session_id: str = "",
 ) -> int:
-    # Keep synthesis inside a small post-warmup ZeroGPU slice; cold model
-    # initialization is handled separately by `warmup_runtime`.
+    runtime_mode = resolve_runtime_mode(os.environ, torch.cuda.is_available())
+    if runtime_mode == "zerogpu":
+        request_settings = normalize_generation_request(
+            resolution=resolution,
+            ss_sampling_steps=ss_sampling_steps,
+            shape_slat_sampling_steps=shape_slat_sampling_steps,
+            tex_slat_sampling_steps=tex_slat_sampling_steps,
+            env=os.environ,
+            cuda_available=torch.cuda.is_available(),
+        )
+        total_steps = (
+            cast(int, request_settings["ss_sampling_steps"])
+            + cast(int, request_settings["shape_slat_sampling_steps"])
+            + cast(int, request_settings["tex_slat_sampling_steps"])
+        )
+        return min(ZEROGPU_MAX_DURATION_SECONDS, max(60, 45 + total_steps * 5))
+
+    # Cold model initialization is handled separately by `warmup_runtime`.
     return 60 if resolution <= 1024 else 180
 
 

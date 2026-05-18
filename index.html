@@ -874,15 +874,15 @@
                                     Controls the latent grid resolution used by the diffusion model during 3D shape
                                     generation.
                                     <div class="note">
-                                        <b>1024:</b> Faster, lower memory (8-12s generation)<br>
-                                        <b>1536:</b> Higher quality details, slower (12-18s generation)
+                                        <b>1024:</b> Hosted ZeroGPU default<br>
+                                        <b>1536:</b> Higher quality for larger paid GPUs; ZeroGPU normalizes to 1024
                                     </div>
                                 </div>
                             </span>
                         </label>
                         <select id="resolution">
                             <option value="1024" selected>1024 (Balanced)</option>
-                            <option value="1536">1536 (High Quality)</option>
+                            <option value="1536">1536 (High Quality / Paid GPU)</option>
                         </select>
                     </div>
                     <div class="input-wrapper">
@@ -1006,17 +1006,16 @@
                                             Number of diffusion steps for shape skeleton generation. More steps = better
                                             detail but slower.
                                             <div class="note">
-                                                <b>6-15:</b> Fast preview (2-5s)<br>
-                                                <b>12-20:</b> Good balance (5-10s)<br>
-                                                <b>20-50:</b> High quality (10-20s)<br>
-                                                <b>Typical:</b> 12 steps optimal for production
+                                                <b>1-5:</b> Hosted ZeroGPU-safe range<br>
+                                                <b>6-12:</b> Larger GPU range<br>
+                                                <b>Typical:</b> 5 steps on ZeroGPU
                                             </div>
                                         </div>
                                     </span>
                                 </span>
-                                <span><span id="ss_steps_val">12</span></span>
+                                <span><span id="ss_steps_val">5</span></span>
                             </label>
-                            <input type="range" id="ss_steps" min="1" max="50" step="1" value="12"
+                            <input type="range" id="ss_steps" min="1" max="50" step="1" value="5"
                                 oninput="updateVal('ss_steps')">
                         </div>
                         <div class="input-wrapper">
@@ -1086,17 +1085,16 @@
                                         Diffusion steps for detailed SDF (shape) generation. More steps improve detail
                                         but reduce speed.
                                         <div class="note">
-                                            <b>6-12:</b> Fast mode (2-3s shape)<br>
-                                            <b>12-20:</b> Balanced (5-8s)<br>
-                                            <b>20-40:</b> High detail (8-15s)<br>
-                                            <b>Production:</b> 12 recommended
+                                            <b>1-5:</b> Hosted ZeroGPU-safe range<br>
+                                            <b>6-12:</b> Larger GPU range<br>
+                                            <b>Typical:</b> 5 steps on ZeroGPU
                                         </div>
                                     </div>
                                 </span>
                             </span>
-                            <span><span id="shape_steps_val">12</span></span>
+                            <span><span id="shape_steps_val">5</span></span>
                         </label>
-                        <input type="range" id="shape_steps" min="1" max="40" step="1" value="12"
+                        <input type="range" id="shape_steps" min="1" max="40" step="1" value="5"
                             oninput="updateVal('shape_steps')">
                     </div>
                     <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0;">
@@ -1144,17 +1142,16 @@
                                                 Steps for material/PBR texture generation. Higher = more refined colors
                                                 and materials.
                                                 <div class="note">
-                                                    <b>6-12:</b> Basic colors (1-2s)<br>
-                                                    <b>12-24:</b> Detailed textures (2-4s)<br>
-                                                    <b>24-40:</b> High-quality materials (4-6s)<br>
-                                                    <b>Default 12:</b> Good balance
+                                                    <b>1-5:</b> Hosted ZeroGPU-safe range<br>
+                                                    <b>6-12:</b> Larger GPU range<br>
+                                                    <b>Typical:</b> 5 steps on ZeroGPU
                                                 </div>
                                             </div>
                                         </span>
                                     </span>
-                                    <span><span id="tex_steps_val">12</span></span>
+                                    <span><span id="tex_steps_val">5</span></span>
                                 </label>
-                                <input type="range" id="tex_steps" min="1" max="40" step="1" value="12"
+                                <input type="range" id="tex_steps" min="1" max="40" step="1" value="5"
                                     oninput="updateVal('tex_steps')">
                             </div>
                         </div>
@@ -1734,7 +1731,7 @@
             populateFrames(generationResult.render_paths);
             setStep(2);
             hideLoading();
-            showToast("Generation complete!");
+            showToast(generationResult.message || "Generation complete!");
         }
 
         // Progress Polling
