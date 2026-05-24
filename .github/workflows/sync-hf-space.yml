@@ -38,11 +38,15 @@ permissions:
 
 jobs:
     preflight:
-        if: github.event_name == 'workflow_dispatch' || vars.HF_SPACE_AUTO_SYNC == 'true'
+        # Sync on manual dispatch or every push to main unless HF_SPACE_AUTO_SYNC=false.
+        if: >-
+          github.event_name == 'workflow_dispatch'
+          || (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.HF_SPACE_AUTO_SYNC != 'false')
         runs-on: ubuntu-latest
         outputs:
             repo_id: ${{ steps.resolve.outputs.repo_id }}
             space_sdk: ${{ steps.resolve.outputs.space_sdk }}
+            space_url: ${{ steps.resolve.outputs.space_url }}
         steps:
             - name: Validate Hugging Face token secret
               env:
@@ -98,3 +102,27 @@ jobs:
                   hf_token: ${{ secrets.HF_TOKEN }}
                   space_sdk: ${{ needs.preflight.outputs.space_sdk }}
                   private: ${{ github.event.inputs.hf_space_private || vars.HF_SPACE_PRIVATE || 'false' }}
+
+    verify:
+        needs: [preflight, sync]
+        if: needs.sync.result == 'success'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - uses: actions/setup-python@v6
+              with:
+                  python-version: "3.12"
+            - name: Poll live Space smoke after sync
+              env:
+                  SPACE_URL: ${{ needs.preflight.outputs.space_url }}
+              run: |
+                  set -euo pipefail
+                  for attempt in 1 2 3 4 5 6 7 8; do
+                    echo "Smoke attempt ${attempt} for ${SPACE_URL}"
+                    if python scripts/space_smoke.py --health-only --html-check --url "${SPACE_URL}"; then
+                      exit 0
+                    fi
+                    sleep 15
+                  done
+                  echo "Space smoke failed after sync polling window." >&2
+                  exit 1
