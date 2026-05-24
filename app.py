@@ -7,8 +7,7 @@ import threading
 import time
 import traceback
 from contextlib import contextmanager
-from typing import *
-from typing import Mapping, Union, cast
+from typing import Any, Dict, Mapping, Union, cast
 
 import cv2
 import numpy as np
@@ -815,11 +814,10 @@ def distance_from_fov(
     rotation_matrix = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
     gp = grid_point.to(torch.float32) @ rotation_matrix.T
     gp = gp / mesh_scale / 2
-    xw, yw, zw = gp[0].item(), gp[1].item(), gp[2].item()
-    xt, yt = float(target_point[0].item()), float(target_point[1].item())
+    xw, yw, _ = gp[0].item(), gp[1].item(), gp[2].item()
+    xt, _ = float(target_point[0].item()), float(target_point[1].item())
     f_pixels = compute_f_pixels(camera_angle_x, image_resolution)
     x_ndc = xt - image_resolution / 2.0
-    y_ndc = -(yt - image_resolution / 2.0)
     distance_x = f_pixels * xw / x_ndc - yw
     return {"distance_from_x": float(distance_x), "f_pixels": float(f_pixels)}
 
