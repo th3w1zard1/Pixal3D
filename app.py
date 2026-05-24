@@ -7,8 +7,7 @@ import threading
 import time
 import traceback
 from contextlib import contextmanager
-from typing import *
-from typing import Mapping, Union, cast
+from typing import Any, Dict, Mapping, Union, cast
 
 import cv2
 import numpy as np
@@ -103,6 +102,12 @@ MODES = [
 ]
 STEPS = 8
 ZEROGPU_MAX_DURATION_SECONDS = 120
+# Keep per-call reservations small so one cold generate fits typical free quota.
+# ZeroGPU may promote to xlarge (2x quota cost vs declared duration); cap accordingly.
+ZEROGPU_QUOTA_MULTIPLIER = 2
+ZEROGPU_WARMUP_DURATION_SECONDS = 30
+ZEROGPU_GENERATION_MAX_DURATION_SECONDS = 60
+ZEROGPU_EXTRACT_DURATION_SECONDS = 30
 ZEROGPU_MAX_RESOLUTION = 1024
 ZEROGPU_MAX_STAGE_STEPS = 5
 ZEROGPU_MAX_DECIMATION_TARGET = 500000
@@ -809,11 +814,10 @@ def distance_from_fov(
     rotation_matrix = torch.tensor([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
     gp = grid_point.to(torch.float32) @ rotation_matrix.T
     gp = gp / mesh_scale / 2
-    xw, yw, zw = gp[0].item(), gp[1].item(), gp[2].item()
-    xt, yt = float(target_point[0].item()), float(target_point[1].item())
+    xw, yw, _ = gp[0].item(), gp[1].item(), gp[2].item()
+    xt, _ = float(target_point[0].item()), float(target_point[1].item())
     f_pixels = compute_f_pixels(camera_angle_x, image_resolution)
     x_ndc = xt - image_resolution / 2.0
-    y_ndc = -(yt - image_resolution / 2.0)
     distance_x = f_pixels * xw / x_ndc - yw
     return {"distance_from_x": float(distance_x), "f_pixels": float(f_pixels)}
 
@@ -1338,7 +1342,10 @@ def generation_gpu_duration(
             + cast(int, request_settings["shape_slat_sampling_steps"])
             + cast(int, request_settings["tex_slat_sampling_steps"])
         )
-        return min(ZEROGPU_MAX_DURATION_SECONDS, max(60, 45 + total_steps * 5))
+        return min(
+            ZEROGPU_GENERATION_MAX_DURATION_SECONDS,
+            max(45, 30 + total_steps * 2),
+        )
 
     # Cold model initialization is handled separately by `warmup_runtime`.
     return 60 if resolution <= 1024 else 180
@@ -1352,7 +1359,7 @@ def extract_glb_gpu_duration(
 ) -> int:
     del state_path, decimation_target, texture_size, session_id
     if resolve_runtime_mode(os.environ, torch.cuda.is_available()) == "zerogpu":
-        return ZEROGPU_MAX_DURATION_SECONDS
+        return ZEROGPU_EXTRACT_DURATION_SECONDS
     return 30
 
 
@@ -1377,6 +1384,19 @@ def runtime_payload() -> dict[str, object]:
     payload["preview_available"] = cuda_available
     target_hardware = resolve_target_hardware(os.environ)
     payload["target_hardware"] = target_hardware
+
+    if runtime_mode == "zerogpu":
+        payload["zerogpu_gpu_budgets"] = {
+            "warmup_seconds": ZEROGPU_WARMUP_DURATION_SECONDS,
+            "generation_max_seconds": ZEROGPU_GENERATION_MAX_DURATION_SECONDS,
+            "extract_seconds": ZEROGPU_EXTRACT_DURATION_SECONDS,
+            "max_texture_size": ZEROGPU_MAX_TEXTURE_SIZE,
+            "max_stage_steps": ZEROGPU_MAX_STAGE_STEPS,
+            "quota_multiplier_note": (
+                "Hosted ZeroGPU may bill up to "
+                f"{ZEROGPU_QUOTA_MULTIPLIER}x the declared duration on xlarge."
+            ),
+        }
 
     if runtime_mode == "cpu":
         payload["ready"] = False
@@ -1492,8 +1512,15 @@ def preprocess(image: FileData) -> FileData:
     return FileData(path=out_path)
 
 
+def warmup_gpu_duration(session_id: str = "") -> int:
+    del session_id
+    if resolve_runtime_mode(os.environ, torch.cuda.is_available()) == "zerogpu":
+        return ZEROGPU_WARMUP_DURATION_SECONDS
+    return 120
+
+
 @app.api()
-@spaces.GPU(duration=120)
+@spaces.GPU(duration=warmup_gpu_duration)
 def warmup_runtime(session_id: str = "") -> Dict:
     _reset_progress(session_id)
     stage = "Preparing runtime"

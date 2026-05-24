@@ -331,6 +331,25 @@
             background: rgba(255, 255, 255, 0.14);
         }
 
+        .viewer-error-signin {
+            display: inline-block;
+            padding: 0.5rem 0.9rem;
+            border-radius: 8px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .viewer-error-signin:hover {
+            filter: brightness(1.08);
+        }
+
+        .viewer-error-signin[hidden] {
+            display: none;
+        }
+
         #frame-container {
             width: 100%;
             height: 100%;
@@ -825,6 +844,90 @@
             border-top: 1px solid rgba(129, 140, 248, 0.2);
             color: var(--accent);
         }
+
+        .runtime-card {
+            background: linear-gradient(180deg, rgba(129, 140, 248, 0.12), rgba(15, 23, 42, 0.35));
+            border: 1px solid rgba(129, 140, 248, 0.22);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .runtime-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .runtime-card-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .runtime-badge {
+            border-radius: 999px;
+            padding: 0.25rem 0.6rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            border: 1px solid transparent;
+        }
+
+        .runtime-badge[data-state="pending"] {
+            background: rgba(148, 163, 184, 0.12);
+            color: #cbd5e1;
+            border-color: rgba(148, 163, 184, 0.2);
+        }
+
+        .runtime-badge[data-state="initializing"] {
+            background: rgba(129, 140, 248, 0.12);
+            color: #c7d2fe;
+            border-color: rgba(129, 140, 248, 0.35);
+        }
+
+        .runtime-badge[data-state="ready"] {
+            background: rgba(16, 185, 129, 0.12);
+            color: #a7f3d0;
+            border-color: rgba(16, 185, 129, 0.35);
+        }
+
+        .runtime-badge[data-state="error"] {
+            background: rgba(248, 113, 113, 0.12);
+            color: #fecaca;
+            border-color: rgba(248, 113, 113, 0.35);
+        }
+
+        .runtime-card p {
+            font-size: 0.76rem;
+            color: var(--text-dim);
+            line-height: 1.55;
+        }
+
+        .btn-glow {
+            border-color: rgba(16, 185, 129, 0.45);
+            color: #d1fae5;
+            box-shadow: 0 0 0 rgba(16, 185, 129, 0.35);
+            animation: glowPulse 2.2s ease-in-out infinite;
+        }
+
+        @keyframes glowPulse {
+            0%, 100% {
+                box-shadow: 0 0 0 rgba(16, 185, 129, 0.12), 0 0 0 rgba(16, 185, 129, 0);
+            }
+            50% {
+                box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.18), 0 0 24px rgba(16, 185, 129, 0.2);
+            }
+        }
+
+        .helper-copy {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+        }
     </style>
 </head>
 
@@ -859,6 +962,13 @@
                     <i data-lucide="globe" style="width: 16px;"></i>
                     Project Page
                 </a>
+                <div class="runtime-card">
+                    <div class="runtime-card-header">
+                        <span class="runtime-card-title">Runtime Status</span>
+                        <span class="runtime-badge" id="runtime-status-badge" data-state="pending">Cold</span>
+                    </div>
+                    <p id="runtime-status-text">The hosted runtime is cold. Generate will prime the model stack automatically.</p>
+                </div>
             </div>
 
             <div class="sidebar-section">
@@ -951,6 +1061,23 @@
                 </div>
             </div>
 
+            <div class="sidebar-section" id="export-controls" style="display: none;">
+                <h3><i data-lucide="package-check" style="width: 14px;"></i> Export Profile</h3>
+                <div class="control-group">
+                    <div class="input-wrapper">
+                        <label>GLB Texture Budget</label>
+                        <select id="export-profile">
+                            <option value="fast">Fast Preview GLB (1K)</option>
+                            <option value="balanced" selected>Balanced GLB (2K)</option>
+                            <option value="detail">High Detail GLB (4K)</option>
+                        </select>
+                        <p class="helper-copy" id="export-profile-hint">
+                            Balanced is the safest hosted default. Switch to High Detail only when the runtime is warm and quota is healthy.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
             <div class="sidebar-section">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; cursor: pointer;"
                     onclick="toggleAdvanced()">
@@ -1040,6 +1167,85 @@
                             <input type="range" id="shape_gs" min="1" max="10" step="0.1" value="7.5"
                                 oninput="updateVal('shape_gs')">
                         </div>
+                        <div class="input-wrapper">
+                            <label style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Shape Sampling Steps
+                                    <span class="tooltip-icon" style="margin-left: 0.3rem;">?
+                                        <div class="tooltip-content">
+                                            <strong>Shape Latent Denoising Iterations</strong>
+                                            Diffusion steps for detailed SDF (shape) generation. More steps improve detail
+                                            but reduce speed.
+                                            <div class="note">
+                                                <b>1-5:</b> Hosted ZeroGPU-safe range<br>
+                                                <b>6-12:</b> Larger GPU range<br>
+                                                <b>Typical:</b> 5 steps on ZeroGPU
+                                            </div>
+                                        </div>
+                                    </span>
+                                </span>
+                                <span><span id="shape_steps_val">5</span></span>
+                            </label>
+                            <input type="range" id="shape_steps" min="1" max="40" step="1" value="5"
+                                oninput="updateVal('shape_steps')">
+                        </div>
+                        <div class="input-wrapper">
+                            <label
+                                style="font-size: 0.72rem; color: var(--text-dim); margin-bottom: 0.5rem; display: flex; gap: 0.3rem;">
+                                <input type="checkbox" id="show-texture-controls"
+                                    style="accent-color: var(--primary); width: 14px; height: 14px; cursor: pointer;">
+                                <span style="cursor: pointer;"
+                                    onclick="document.getElementById('show-texture-controls').click()">Advanced Texture
+                                    Tuning</span>
+                            </label>
+                        </div>
+                        <div id="texture-controls"
+                            style="display: none; padding-top: 0.75rem; border-top: 1px solid var(--border);">
+                            <div class="control-group">
+                                <div class="input-wrapper">
+                                    <label style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span>Texture Guidance
+                                            <span class="tooltip-icon" style="margin-left: 0.3rem;">?
+                                                <div class="tooltip-content">
+                                                    <strong>Texture Latent Guidance Strength</strong>
+                                                    Controls PBR material/color generation. Lower values allow more creative
+                                                    material interpretation.
+                                                    <div class="note">
+                                                        <b>Default 1.0:</b> Balanced colors<br>
+                                                        <b>0.0-0.5:</b> Creative textures<br>
+                                                        <b>1.0-2.0:</b> Faithful colors<br>
+                                                        <b>Rarely used:</b> Most changes in other params
+                                                    </div>
+                                                </div>
+                                            </span>
+                                        </span>
+                                        <span><span id="tex_gs_val">1.0</span></span>
+                                    </label>
+                                    <input type="range" id="tex_gs" min="0" max="5" step="0.1" value="1.0"
+                                        oninput="updateVal('tex_gs')">
+                                </div>
+                                <div class="input-wrapper">
+                                    <label style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span>Texture Sampling Steps
+                                            <span class="tooltip-icon" style="margin-left: 0.3rem;">?
+                                                <div class="tooltip-content">
+                                                    <strong>Texture Denoising Iterations</strong>
+                                                    Steps for material/PBR texture generation. Higher = more refined colors
+                                                    and materials.
+                                                    <div class="note">
+                                                        <b>1-5:</b> Hosted ZeroGPU-safe range<br>
+                                                        <b>6-12:</b> Larger GPU range<br>
+                                                        <b>Typical:</b> 5 steps on ZeroGPU
+                                                    </div>
+                                                </div>
+                                            </span>
+                                        </span>
+                                        <span><span id="tex_steps_val">5</span></span>
+                                    </label>
+                                    <input type="range" id="tex_steps" min="1" max="40" step="1" value="5"
+                                        oninput="updateVal('tex_steps')">
+                                </div>
+                            </div>
+                        </div>
                         <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0;">
                         <div class="input-wrapper">
                             <label style="display: flex; justify-content: space-between; align-items: center;">
@@ -1074,89 +1280,9 @@
                     <i data-lucide="zap"></i>
                     Start Generation
                 </button>
-                <button class="btn btn-outline" id="extract-btn" style="display: none;">
+                <button class="btn btn-outline btn-glow" id="extract-btn" style="display: none;">
                     <i data-lucide="box"></i>
-                    <div class="input-wrapper">
-                        <label style="display: flex; justify-content: space-between; align-items: center;">
-                            <span>Shape Sampling Steps
-                                <span class="tooltip-icon" style="margin-left: 0.3rem;">?
-                                    <div class="tooltip-content">
-                                        <strong>Shape Latent Denoising Iterations</strong>
-                                        Diffusion steps for detailed SDF (shape) generation. More steps improve detail
-                                        but reduce speed.
-                                        <div class="note">
-                                            <b>1-5:</b> Hosted ZeroGPU-safe range<br>
-                                            <b>6-12:</b> Larger GPU range<br>
-                                            <b>Typical:</b> 5 steps on ZeroGPU
-                                        </div>
-                                    </div>
-                                </span>
-                            </span>
-                            <span><span id="shape_steps_val">5</span></span>
-                        </label>
-                        <input type="range" id="shape_steps" min="1" max="40" step="1" value="5"
-                            oninput="updateVal('shape_steps')">
-                    </div>
-                    <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0;">
-                    <div class="input-wrapper">
-                        <label
-                            style="font-size: 0.72rem; color: var(--text-dim); margin-bottom: 0.5rem; display: flex; gap: 0.3rem;">
-                            <input type="checkbox" id="show-texture-controls"
-                                style="accent-color: var(--primary); width: 14px; height: 14px; cursor: pointer;">
-                            <span style="cursor: pointer;"
-                                onclick="document.getElementById('show-texture-controls').click()">Advanced Texture
-                                Tuning</span>
-                        </label>
-                    </div>
-                    <div id="texture-controls"
-                        style="display: none; padding-top: 0.75rem; border-top: 1px solid var(--border);">
-                        <div class="control-group">
-                            <div class="input-wrapper">
-                                <label style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span>Texture Guidance
-                                        <span class="tooltip-icon" style="margin-left: 0.3rem;">?
-                                            <div class="tooltip-content">
-                                                <strong>Texture Latent Guidance Strength</strong>
-                                                Controls PBR material/color generation. Lower values allow more creative
-                                                material interpretation.
-                                                <div class="note">
-                                                    <b>Default 1.0:</b> Balanced colors<br>
-                                                    <b>0.0-0.5:</b> Creative textures<br>
-                                                    <b>1.0-2.0:</b> Faithful colors<br>
-                                                    <b>Rarely used:</b> Most changes in other params
-                                                </div>
-                                            </div>
-                                        </span>
-                                    </span>
-                                    <span><span id="tex_gs_val">1.0</span></span>
-                                </label>
-                                <input type="range" id="tex_gs" min="0" max="5" step="0.1" value="1.0"
-                                    oninput="updateVal('tex_gs')">
-                            </div>
-                            <div class="input-wrapper">
-                                <label style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span>Texture Sampling Steps
-                                        <span class="tooltip-icon" style="margin-left: 0.3rem;">?
-                                            <div class="tooltip-content">
-                                                <strong>Texture Denoising Iterations</strong>
-                                                Steps for material/PBR texture generation. Higher = more refined colors
-                                                and materials.
-                                                <div class="note">
-                                                    <b>1-5:</b> Hosted ZeroGPU-safe range<br>
-                                                    <b>6-12:</b> Larger GPU range<br>
-                                                    <b>Typical:</b> 5 steps on ZeroGPU
-                                                </div>
-                                            </div>
-                                        </span>
-                                    </span>
-                                    <span><span id="tex_steps_val">5</span></span>
-                                </label>
-                                <input type="range" id="tex_steps" min="1" max="40" step="1" value="5"
-                                    oninput="updateVal('tex_steps')">
-                            </div>
-                        </div>
-                    </div>
-                    <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0;">
+                    Export GLB
                 </button>
                 <button class="btn btn-outline" id="download-btn"
                     style="display: none; background: rgba(16, 185, 129, 0.1); border-color: var(--accent); color: var(--accent);">
@@ -1239,6 +1365,7 @@
                             <h3 id="viewer-error-title">Generation could not complete</h3>
                             <p id="viewer-error-message"></p>
                             <div class="viewer-error-actions">
+                                <a id="viewer-error-signin" class="viewer-error-signin" href="https://huggingface.co/login" target="_blank" rel="noopener noreferrer" hidden>Sign in on Hugging Face</a>
                                 <button type="button" id="viewer-error-copy">Copy details</button>
                                 <button type="button" id="viewer-error-dismiss">Dismiss</button>
                             </div>
@@ -1310,6 +1437,9 @@
         let currentFrame = 0;
         const sessionId = crypto.randomUUID();
         let currentStep = 1;
+        let runtimePrimed = false;
+        let lastRuntimeHealth = null;
+        let runtimeStatusInterval = null;
 
         const MODES = [
             { name: "Normal", key: "normal" },
@@ -1319,6 +1449,33 @@
             { name: "Sunset", key: "shaded_sunset" },
             { name: "Blue", key: "shaded_courtyard" }
         ];
+        const EXPORT_PROFILES = {
+            fast: {
+                label: "Fast Preview GLB",
+                textureSize: 512,
+                hint: "Fastest export and lowest quota cost. Best for proofing or quick handoff on ZeroGPU."
+            },
+            balanced: {
+                label: "Balanced GLB",
+                textureSize: 2048,
+                hint: "Recommended hosted default: noticeably sharper textures without the full 4K export cost."
+            },
+            detail: {
+                label: "High Detail GLB",
+                textureSize: 4096,
+                hint: "Maximum texture fidelity. Use when the runtime is already warm and you have quota headroom."
+            }
+        };
+        const PREPROCESS_TIMEOUT_MS = 120000;
+
+        function withTimeout(promise, timeoutMs, label) {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+                }),
+            ]);
+        }
 
         // Global queue status polling
         function startQueuePolling() {
@@ -1350,6 +1507,8 @@
                 client = await Client.connect(window.location.origin);
                 setupUI();
                 loadSamples();
+                await refreshRuntimeStatus();
+                runtimeStatusInterval = setInterval(refreshRuntimeStatus, 15000);
             } catch (err) {
                 console.error("Connection error:", err);
                 showToast("Connection failed. Try refreshing.");
@@ -1378,12 +1537,19 @@
                 link.download = "pixal3d_export.glb";
                 link.click();
             };
+            document.getElementById('export-profile').onchange = updateExportProfileHint;
+            updateExportProfileHint();
+            document.getElementById('show-texture-controls').onchange = (e) => {
+                document.getElementById('texture-controls').style.display = e.target.checked ? 'block' : 'none';
+            };
 
             // Clear button
             document.getElementById('clear-btn').onclick = () => {
                 // Reset state
                 currentFile = null;
+                preprocessedFile = null;
                 generationResult = null;
+                runtimePrimed = false;
                 currentFrame = 0;
                 currentMode = "shaded_forest";
 
@@ -1413,14 +1579,11 @@
                 // Reset mode tabs
                 document.querySelectorAll('.mode-tab').forEach(t => {
                     t.classList.toggle('active', t.textContent === 'Forest');
-                    // Texture controls toggle
-                    document.getElementById('show-texture-controls').onchange = (e) => {
-                        document.getElementById('texture-controls').style.display = e.target.checked ? 'block' : 'none';
-                    };
                 });
 
                 // Go back to step 1
                 setStep(1);
+                refreshRuntimeStatus();
                 showToast("Cleared. Ready for new upload.");
             };
 
@@ -1488,25 +1651,15 @@
             });
         }
 
-        async function handleImageUpload(file) {
-            currentFile = file;
-            preprocessedFile = null;
+        async function runPreprocess(file) {
             isPreprocessing = true;
-            document.getElementById('generate-btn').disabled = true;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const img = document.getElementById('source-preview');
-                const hint = document.getElementById('upload-hint');
-                img.src = e.target.result;
-                img.style.display = 'block';
-                hint.style.display = 'none';
-                setStep(1);
-            };
-            reader.readAsDataURL(file);
-
-            // Call preprocess and update with segmented result
+            showToast("Removing background...", 4000);
             try {
-                const result = await client.predict("/preprocess", { image: handle_file(file) });
+                const result = await withTimeout(
+                    client.predict("/preprocess", { image: handle_file(file) }),
+                    PREPROCESS_TIMEOUT_MS,
+                    "Background removal",
+                );
                 const processedUrl = result.data[0].url;
                 if (processedUrl) {
                     preprocessedFile = processedUrl;
@@ -1518,9 +1671,148 @@
                 }
             } catch (err) {
                 console.error("Preprocess failed:", err);
+                showToast(formatApiError(err, "Background removal failed. Continuing with the original upload."), 5200);
+            } finally {
+                isPreprocessing = false;
             }
-            isPreprocessing = false;
+        }
+
+        async function handleImageUpload(file) {
+            currentFile = file;
+            preprocessedFile = null;
+            document.getElementById('generate-btn').disabled = true;
+            await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = document.getElementById('source-preview');
+                    const hint = document.getElementById('upload-hint');
+                    img.src = e.target.result;
+                    img.style.display = 'block';
+                    hint.style.display = 'none';
+                    setStep(1);
+                    resolve();
+                };
+                reader.readAsDataURL(file);
+            });
             document.getElementById('generate-btn').disabled = false;
+            void runPreprocess(file);
+        }
+
+        async function refreshRuntimeStatus() {
+            try {
+                const resp = await fetch('/health', { cache: 'no-store' });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                lastRuntimeHealth = data;
+                const badge = document.getElementById('runtime-status-badge');
+                const text = document.getElementById('runtime-status-text');
+                const state = data.state || (data.ready ? 'ready' : 'pending');
+                const stateLabel = {
+                    pending: 'Cold',
+                    initializing: 'Warming',
+                    ready: 'Ready',
+                    error: 'Error'
+                }[state] || 'Live';
+
+                badge.dataset.state = state;
+                badge.textContent = stateLabel;
+                text.textContent = data.ready
+                    ? 'Runtime is hot. Generation should start immediately unless the hosted queue is saturated.'
+                    : (data.message || 'The hosted runtime is cold. Generate will prime the model stack automatically.');
+                runtimePrimed = !!data.ready;
+                applyZeroGpuHostedDefaults(data);
+            } catch (err) {
+                console.debug('Runtime status probe failed:', err);
+            }
+        }
+
+        function applyZeroGpuHostedDefaults(health) {
+            if (health?.runtime_mode !== 'zerogpu') return;
+            const exportSelect = document.getElementById('export-profile');
+            if (exportSelect && exportSelect.dataset.zerogpuDefaulted !== '1') {
+                exportSelect.value = 'fast';
+                exportSelect.dataset.zerogpuDefaulted = '1';
+                updateExportProfileHint();
+            }
+        }
+
+        function updateExportProfileHint() {
+            const profile = getExportProfile();
+            document.getElementById('export-profile-hint').textContent = profile.hint;
+        }
+
+        function getExportProfile() {
+            const value = document.getElementById('export-profile').value;
+            return EXPORT_PROFILES[value] || EXPORT_PROFILES.balanced;
+        }
+
+        function formatApiError(err, fallback) {
+            const parts = [];
+            const visit = (value) => {
+                if (!value) return;
+                if (typeof value === 'string') {
+                    const trimmed = value.trim();
+                    if (trimmed) parts.push(trimmed);
+                    return;
+                }
+                if (typeof value !== 'object') return;
+                ['title', 'message', 'original_msg', 'error'].forEach((key) => {
+                    if (typeof value[key] === 'string' && value[key].trim()) {
+                        parts.push(value[key].trim());
+                    }
+                });
+                if (value.cause) visit(value.cause);
+            };
+            visit(err);
+            const unique = [...new Set(parts)];
+            if (!unique.length) return fallback;
+            const combined = unique.join(': ');
+            const trimmed = combined.length > 260 ? combined.slice(0, 257) + '...' : combined;
+            return enrichZeroGpuError(trimmed);
+        }
+
+        function enrichZeroGpuError(message) {
+            if (!message || lastRuntimeHealth?.runtime_mode !== 'zerogpu') return message;
+            if (/quota exceeded/i.test(message)) {
+                return `${message} Hosted ZeroGPU may bill up to 2× the declared GPU slice on xlarge hardware — sign in at huggingface.co for a higher daily quota.`;
+            }
+            if (/GPU task aborted/i.test(message)) {
+                return `${message} The hosted GPU slice ended before the cold model stack finished. Retry after the daily quota resets or sign in for more ZeroGPU time.`;
+            }
+            return message;
+        }
+
+        function buildTransitionMessage(result, fallback) {
+            const base = result?.message || fallback;
+            if (result?.hardware_transition_requested) {
+                return `${base} ZeroGPU hardware was requested. Reload this page in a few minutes once the Space restarts on GPU.`;
+            }
+            return base;
+        }
+
+        async function ensureRuntimePrimed() {
+            if (runtimePrimed) return;
+
+            if (lastRuntimeHealth?.runtime_mode === 'zerogpu') {
+                // generate_3d already calls ensure_runtime_ready in its GPU slice;
+                // a separate warmup would stack another quota reservation.
+                return;
+            }
+
+            startProgressListener();
+            try {
+                const result = await client.predict("/warmup_runtime", { session_id: sessionId });
+                const payload = firstResultData(result);
+                if (payload?.error) {
+                    throw new Error(buildTransitionMessage(payload, 'Runtime warmup could not complete on this hardware.'));
+                }
+                runtimePrimed = true;
+                stopProgressListener();
+                await refreshRuntimeStatus();
+            } catch (err) {
+                stopProgressListener();
+                throw err;
+            }
         }
 
         function setStep(num) {
@@ -1536,6 +1828,7 @@
 
             // Toggle side controls based on step
             document.getElementById('render-controls').style.display = (num >= 2) ? 'block' : 'none';
+            document.getElementById('export-controls').style.display = (num >= 2) ? 'block' : 'none';
             const canExtract = generationResult?.extract_available !== false;
             document.getElementById('extract-btn').style.display = (num === 2 && canExtract) ? 'flex' : 'none';
             document.getElementById('download-btn').style.display = (num === 3) ? 'flex' : 'none';
@@ -1659,7 +1952,6 @@
             setStep(1);
 
             showLoading();
-            startProgressListener();
             const generationEndpoint = "/generate_3d";
             const params = {
                 image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
@@ -1680,7 +1972,8 @@
             };
 
             try {
-                // Register in queue immediately (before Gradio dispatch delay)
+                await ensureRuntimePrimed();
+                startProgressListener();
                 await fetch(`/queue/join?session_id=${sessionId}`);
                 const result = await client.predict(generationEndpoint, params);
                 generationResult = firstResultData(result);
@@ -1689,8 +1982,9 @@
                 stopProgressListener();
                 hideLoading();
                 resetModelViewer();
+                await refreshRuntimeStatus();
                 showViewerError(
-                    extractErrorText(err) || 'An error occurred during synthesis.',
+                    formatApiError(err, 'An error occurred during synthesis.'),
                     { title: 'Generation failed' }
                 );
                 return;
@@ -1701,9 +1995,10 @@
             if (generationResult?.error) {
                 hideLoading();
                 resetModelViewer();
+                await refreshRuntimeStatus();
                 showViewerError(
-                    generationResult.message || 'Generation could not complete.',
-                    { title: 'Generation failed' }
+                    buildTransitionMessage(generationResult, 'Generation could not complete.'),
+                    { title: generationResult.hardware_transition_requested ? 'ZeroGPU required' : 'Generation failed' }
                 );
                 return;
             }
@@ -1730,6 +2025,7 @@
 
             populateFrames(generationResult.render_paths);
             setStep(2);
+            await refreshRuntimeStatus();
             hideLoading();
             showToast(generationResult.message || "Generation complete!");
         }
@@ -1889,17 +2185,26 @@
         function hideViewerError() {
             const el = document.getElementById('viewer-error');
             if (el) el.classList.remove('show');
+            const signIn = document.getElementById('viewer-error-signin');
+            if (signIn) signIn.hidden = true;
         }
 
         function showViewerError(message, opts) {
             const el = document.getElementById('viewer-error');
             if (!el) return;
             const title = (opts && opts.title) || 'Generation could not complete';
+            const msgText = (message && String(message).trim()) || 'An unknown error occurred.';
             document.getElementById('viewer-error-title').textContent = title;
-            document.getElementById('viewer-error-message').textContent =
-                (message && String(message).trim()) || 'An unknown error occurred.';
+            document.getElementById('viewer-error-message').textContent = msgText;
+            const signIn = document.getElementById('viewer-error-signin');
+            if (signIn) {
+                const showSignIn = /quota exceeded|GPU task aborted/i.test(msgText);
+                signIn.hidden = !showSignIn;
+                if (showSignIn) {
+                    signIn.href = `https://huggingface.co/login?next=${encodeURIComponent(window.location.href)}`;
+                }
+            }
             el.classList.add('show');
-            // Make sure the user actually sees it: jump to the result tab
             if (typeof setStep === 'function') setStep(3);
         }
 
@@ -1929,29 +2234,31 @@
             showLoading();
             startProgressListener();
             const extractionEndpoint = "/extract_glb_api";
+            const exportProfile = getExportProfile();
             const params = {
                 state_path: generationResult.state_path,
                 decimation_target: parseInt(document.getElementById('decimation').value),
-                texture_size: 512,
+                texture_size: exportProfile.textureSize,
                 session_id: sessionId
             };
 
             try {
-                // Register in queue immediately (before Gradio dispatch delay)
                 await fetch(`/queue/join?session_id=${sessionId}`);
                 const result = await client.predict(extractionEndpoint, params);
                 const glbUrl = getFileUrl(firstResultData(result));
 
                 stopProgressListener();
                 await loadViewerModel(glbUrl, 3);
+                await refreshRuntimeStatus();
                 hideLoading();
-                showToast("3D Asset ready!");
+                showToast(`${exportProfile.label} ready!`, 4500);
             } catch (err) {
                 console.error(err);
                 stopProgressListener();
                 viewer.style.visibility = 'visible';
                 hideLoading();
-                showToast(extractErrorText(err) || "Extraction failed.");
+                await refreshRuntimeStatus();
+                showToast(formatApiError(err, "Export failed. Try the Fast Preview GLB profile first."), 6500);
             }
         }
 
@@ -2062,11 +2369,11 @@
             document.getElementById('progress-bar-fill').style.width = '0%';
         }
 
-        function showToast(msg) {
+        function showToast(msg, timeoutMs = 3200) {
             const t = document.getElementById('toast');
             t.textContent = msg;
             t.style.display = 'block';
-            setTimeout(() => t.style.display = 'none', 3000);
+            setTimeout(() => t.style.display = 'none', timeoutMs);
         }
 
         // Gallery slider & scroll sync with auto-scroll
