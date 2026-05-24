@@ -1788,7 +1788,12 @@
                 const badge = document.getElementById('runtime-status-badge');
                 const text = document.getElementById('runtime-status-text');
                 let state = data.state || (lastRuntimeReady ? 'ready' : 'pending');
-                if (!lastRuntimeReady && !isCpuStandby(data) && state === 'pending') {
+                if (
+                    !lastRuntimeReady
+                    && !isCpuStandby(data)
+                    && data.runtime_mode !== 'zerogpu'
+                    && state === 'pending'
+                ) {
                     state = 'initializing';
                 }
                 const stateLabel = {
@@ -1806,6 +1811,9 @@
                         || 'This Space is on CPU standby while GPU hardware starts. Generate unlocks after ZeroGPU is ready.';
                 } else if (lastRuntimeReady) {
                     text.textContent = 'Runtime is hot. Generation should start immediately unless the hosted queue is saturated.';
+                } else if (data.runtime_mode === 'zerogpu') {
+                    text.textContent =
+                        'ZeroGPU cold start. Your first Generate loads the model stack inside a hosted GPU slice — no separate warmup needed.';
                 } else {
                     text.textContent = data.message || 'Models are warming on the hosted GPU. Generate unlocks when ready.';
                 }
