@@ -1759,7 +1759,11 @@
                 btn.title = health?.message || 'Waiting for GPU hardware. This page reloads automatically when ZeroGPU is ready.';
                 return;
             }
-            if (health?.runtime_mode !== 'zerogpu' && !lastRuntimeReady) {
+            if (
+                health
+                && health.runtime_mode !== 'zerogpu'
+                && !lastRuntimeReady
+            ) {
                 btn.disabled = true;
                 btn.title = health?.message || 'Models are still warming. Generate unlocks when the runtime reports ready.';
                 return;
