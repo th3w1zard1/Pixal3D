@@ -16,8 +16,8 @@ usage() {
   cat <<'EOF'
 Usage: scripts/browser_glb_smoke.sh [--url URL] [--headed] [--preview-wait SEC] [--generate-wait SEC]
 
-Automates browser gallery -> Generate -> GLB on the hosted Space (agent-browser required).
-Uses ?smoke=1 to skip cpu→zerogpu reload. Exit 0 when GLB ready; 1 viewer error; 2 timeout; 3 setup.
+Uses ?smoke=1 and one in-page async eval for sample load, generation, and GLB polling
+(agent-browser loses page state across separate evals after a long call).
 EOF
 }
 
@@ -83,16 +83,6 @@ ab_text() {
   printf '%s' "$out"
 }
 
-glb_ready_js="(() => {
-  if (document.body?.dataset?.smokeGlbReady === 'true') return true;
-  const step3 = document.getElementById('step-3')?.classList.contains('active');
-  const extract = document.getElementById('extract-btn');
-  const extractOn = extract && (extract.style.display === 'flex' || extract.style.display === 'block');
-  const viewer = document.getElementById('main-3d-viewer');
-  const viewerOn = viewer && viewer.style.visibility !== 'hidden' && (viewer.src || '').length > 8;
-  return !!(step3 && extractOn && viewerOn);
-})()"
-
 cleanup() {
   ab close 2>/dev/null || true
 }
@@ -135,54 +125,52 @@ if ! ab wait ".example-item" 30000 2>/dev/null; then
   exit 3
 fi
 
-echo "==> Loading sample in-page (max ${PREVIEW_WAIT_SEC}s)"
-load_result="$(ab_text "(async () => {
+echo "==> E2E load + generate + GLB (preview ${PREVIEW_WAIT_SEC}s, generate ${GENERATE_WAIT_SEC}s)"
+e2e_result="$(ab_text "(async () => {
+  const glbReady = () => {
+    if (document.body?.dataset?.smokeGlbReady === 'true') return true;
+    const step3 = document.getElementById('step-3')?.classList.contains('active');
+    const extract = document.getElementById('extract-btn');
+    const extractOn = extract && (extract.style.display === 'flex' || extract.style.display === 'block');
+    const viewer = document.getElementById('main-3d-viewer');
+    const viewerOn = viewer && viewer.style.visibility !== 'hidden' && (viewer.src || '').length > 8;
+    return !!(step3 && extractOn && viewerOn);
+  };
   if (typeof window.__pixal3dLoadSamplePath !== 'function') return 'no-hook';
   void window.__pixal3dLoadSamplePath('assets/images/0_img.png');
-  const deadline = Date.now() + ${PREVIEW_WAIT_SEC}000;
+  let deadline = Date.now() + ${PREVIEW_WAIT_SEC}000;
   while (Date.now() < deadline) {
     const status = window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || '';
     if (status === 'done') break;
     if (String(status).startsWith('err:')) return status;
-    const loadErr = document.body.dataset.smokeLoadError || '';
-    if (loadErr) return 'err:' + loadErr;
+    if (document.body.dataset.smokeLoadError) return 'err:' + document.body.dataset.smokeLoadError;
     await new Promise((r) => setTimeout(r, 500));
   }
   if ((window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || '') !== 'done') {
-    return 'timeout';
+    return 'timeout:sample';
   }
-  if (typeof window.__pixal3dRunGeneration === 'function') {
-    window.__pixal3dRunGeneration();
-    return 'started';
+  if (typeof window.__pixal3dRunGeneration !== 'function') return 'no-generation-hook';
+  window.__pixal3dRunGeneration();
+  deadline = Date.now() + ${GENERATE_WAIT_SEC}000;
+  while (Date.now() < deadline) {
+    if (document.getElementById('viewer-error')?.classList.contains('show')) {
+      const msg = document.getElementById('viewer-error-message')?.textContent?.trim() || 'viewer error';
+      return 'error:' + msg;
+    }
+    if (glbReady()) return 'glb-ready';
+    await new Promise((r) => setTimeout(r, 5000));
   }
-  return 'no-generation-hook';
+  return 'timeout:glb';
 })()")"
-echo "browser_glb_smoke: load/generate start result=${load_result}"
-if [[ "$load_result" != "started" ]]; then
-  echo "browser_glb_smoke: sample load or generate start failed (${load_result})" >&2
-  exit 2
+
+echo "browser_glb_smoke: e2e result=${e2e_result}"
+if [[ "$e2e_result" == "glb-ready" ]]; then
+  echo "OK: GLB ready in browser"
+  exit 0
 fi
-
-echo "==> Waiting for GLB (max ${GENERATE_WAIT_SEC}s)"
-
-for ((i = 0; i < GENERATE_WAIT_SEC; i += 5)); do
-  if ab_bool "document.getElementById('viewer-error')?.classList.contains('show')"; then
-    err_msg="$(ab_text "document.getElementById('viewer-error-message')?.textContent?.trim() || ''")"
-    echo "browser_glb_smoke: viewer error: ${err_msg}" >&2
-    exit 1
-  fi
-
-  if ab_bool "$glb_ready_js"; then
-    src="$(ab_text "document.getElementById('main-3d-viewer')?.src || ''")"
-    marker="$(ab_text "document.body?.dataset?.smokeGlbReady || ''")"
-    echo "OK: GLB ready in browser"
-    [[ -n "$marker" ]] && echo "marker: data-smoke-glb-ready=${marker}"
-    [[ -n "$src" ]] && echo "src: $src"
-    exit 0
-  fi
-
-  sleep 5
-done
-
-echo "browser_glb_smoke: timed out after ${GENERATE_WAIT_SEC}s" >&2
+if [[ "$e2e_result" == error:* ]]; then
+  echo "browser_glb_smoke: viewer error (${e2e_result#error:})" >&2
+  exit 1
+fi
+echo "browser_glb_smoke: failed (${e2e_result})" >&2
 exit 2
