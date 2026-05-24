@@ -17,6 +17,7 @@ SMOKE_SESSION_ID = "space-smoke"
 # Match hosted ZeroGPU caps and the UI fast export profile (512 texture path).
 ZEROGPU_SMOKE_RESOLUTION = 512
 ZEROGPU_SMOKE_STAGE_STEPS = 5
+SMOKE_REQUIREMENTS = Path(__file__).resolve().parent / "smoke-requirements.txt"
 HTML_MARKERS = (
     "runtime-signin-link",
     "GPU slice ended early",
@@ -76,6 +77,24 @@ def check_html(base_url: str, timeout: float) -> dict[str, Any]:
     }
 
 
+def gradio_client_install_hint() -> str:
+    req_path = SMOKE_REQUIREMENTS
+    return (
+        "gradio_client is required for --generate. On PEP 668 hosts, use a venv:\n"
+        "  python3 -m venv .venv\n"
+        f"  .venv/bin/pip install -r {req_path}\n"
+        "  .venv/bin/python scripts/space_smoke.py --generate"
+    )
+
+
+def gradio_client_import_error(exc: ImportError) -> dict[str, Any]:
+    return {
+        "warmup_ok": False,
+        "warmup_error": f"gradio_client not installed: {exc}\n{gradio_client_install_hint()}",
+        "generate_ok": False,
+    }
+
+
 def run_warmup(client: Any, session_id: str) -> dict[str, Any]:
     try:
         result = client.predict(api_name="/warmup_runtime", session_id=session_id)
@@ -98,7 +117,7 @@ def run_generate(client: Any, sample: Path, session_id: str) -> dict[str, Any]:
     except ImportError as exc:
         return {
             "generate_ok": False,
-            "generate_error": f"gradio_client not installed: {exc}",
+            "generate_error": f"gradio_client not installed: {exc}\n{gradio_client_install_hint()}",
         }
 
     try:
@@ -135,11 +154,7 @@ def run_warmup_and_generate(base_url: str, sample: Path, session_id: str) -> dic
     try:
         from gradio_client import Client
     except ImportError as exc:
-        return {
-            "warmup_ok": False,
-            "warmup_error": f"gradio_client not installed: {exc}",
-            "generate_ok": False,
-        }
+        return gradio_client_import_error(exc)
 
     client = Client(base_url.rstrip("/") + "/")
     warmup = run_warmup(client, session_id)
@@ -159,8 +174,8 @@ Examples:
   python scripts/space_smoke.py --url https://th3w1zard1-pixal3d.hf.space/ --generate
 
 `--generate` calls /warmup_runtime before /generate_3d with ZeroGPU-safe defaults
-(512 resolution, 5 stage steps). Anonymous cold runs may still hit GPU slice limits;
-sign in on the Space for reliable full generate checks.
+(512 resolution, 5 stage steps). Requires gradio_client — see scripts/smoke-requirements.txt.
+Anonymous cold runs may still hit GPU slice limits; sign in on the Space for reliable checks.
         """.strip(),
     )
     parser.add_argument("--url", default=DEFAULT_SPACE_URL, help="Space base URL")
