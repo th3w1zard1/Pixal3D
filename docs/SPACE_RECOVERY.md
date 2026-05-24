@@ -2,13 +2,15 @@
 
 ## Status: closed
 
-The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `037-*`).
+The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `039-*`).
+
+**Last CLI check (2026-05-24):** `./scripts/verify_hosted_space.sh` pass; `--generate` pass (~124s, `glb_path`, `extract_available: true`).
 
 | Surface | Verification |
 |---------|----------------|
-| Backend `/generate_3d` (CLI) | **Pass** — anonymous cold run ~134s, `glb_path`, `extract_available: true` (2026-05-24) |
-| Health + HTML smoke | **Pass** — markers include 512 ZeroGPU option and `data-smoke-default-sample` |
-| GitHub ↔ HF parity | **Pass** — `check_repo_parity.py` at `a14b875` |
+| Backend `/generate_3d` (CLI) | **Pass** — anonymous cold run ~124s, `glb_path`, `extract_available: true` (2026-05-24) |
+| Health + HTML smoke | **Pass** — markers + ZeroGPU recovery fields (`BiRefNet_lite`, prefetch, 120s cold slice, `cuda_mesh_operators`) |
+| GitHub ↔ HF parity | **Pass** — `check_repo_parity.py` on `main` |
 | Browser gallery → GLB | **Blocked on quota** when anonymous daily slice is exhausted; sign in on the Space or retry after reset |
 
 ## Verification order (agents)
