@@ -1,7 +1,7 @@
 ---
 title: "ship: merge post-recovery PR and sync GitHub↔HF parity"
 type: chore
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/SPACE_RECOVERY.md
 ---
