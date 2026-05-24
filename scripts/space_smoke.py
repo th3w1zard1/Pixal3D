@@ -13,6 +13,10 @@ from typing import Any
 
 DEFAULT_SPACE_URL = "https://th3w1zard1-pixal3d.hf.space/"
 DEFAULT_SAMPLE = Path(__file__).resolve().parents[1] / "assets" / "images" / "0_img.png"
+SMOKE_SESSION_ID = "space-smoke"
+# Match hosted ZeroGPU caps and the UI fast export profile (512 texture path).
+ZEROGPU_SMOKE_RESOLUTION = 512
+ZEROGPU_SMOKE_STAGE_STEPS = 5
 HTML_MARKERS = (
     "runtime-signin-link",
     "GPU slice ended early",
@@ -72,38 +76,51 @@ def check_html(base_url: str, timeout: float) -> dict[str, Any]:
     }
 
 
-def run_generate(base_url: str, sample: Path, timeout: float) -> dict[str, Any]:
+def run_warmup(client: Any, session_id: str) -> dict[str, Any]:
+    try:
+        result = client.predict(api_name="/warmup_runtime", session_id=session_id)
+    except Exception as exc:  # noqa: BLE001
+        return {"warmup_ok": False, "warmup_error": str(exc)}
+    if isinstance(result, dict) and result.get("error"):
+        return {
+            "warmup_ok": False,
+            "warmup_error": str(result["error"]),
+            "warmup_result": result,
+        }
+    return {"warmup_ok": True, "warmup_result": result}
+
+
+def run_generate(client: Any, sample: Path, session_id: str) -> dict[str, Any]:
     if not sample.is_file():
         return {"generate_ok": False, "generate_error": f"sample not found: {sample}"}
     try:
-        from gradio_client import Client, handle_file
+        from gradio_client import handle_file
     except ImportError as exc:
         return {
             "generate_ok": False,
             "generate_error": f"gradio_client not installed: {exc}",
         }
 
-    client = Client(base_url.rstrip("/") + "/")
     try:
         result = client.predict(
             handle_file(str(sample)),
             42,
-            1024,
+            ZEROGPU_SMOKE_RESOLUTION,
             7.5,
             0.7,
-            5,
+            ZEROGPU_SMOKE_STAGE_STEPS,
             5.0,
             7.5,
             0.5,
-            5,
+            ZEROGPU_SMOKE_STAGE_STEPS,
             3.0,
             1.0,
             0.0,
-            5,
+            ZEROGPU_SMOKE_STAGE_STEPS,
             3.0,
             -1.0,
             "deg",
-            "space-smoke",
+            session_id,
             api_name="/generate_3d",
         )
     except Exception as exc:  # noqa: BLE001
@@ -114,6 +131,24 @@ def run_generate(base_url: str, sample: Path, timeout: float) -> dict[str, Any]:
     return {"generate_ok": True, "generate_result": result}
 
 
+def run_warmup_and_generate(base_url: str, sample: Path, session_id: str) -> dict[str, Any]:
+    try:
+        from gradio_client import Client
+    except ImportError as exc:
+        return {
+            "warmup_ok": False,
+            "warmup_error": f"gradio_client not installed: {exc}",
+            "generate_ok": False,
+        }
+
+    client = Client(base_url.rstrip("/") + "/")
+    warmup = run_warmup(client, session_id)
+    if not warmup.get("warmup_ok"):
+        return {**warmup, "generate_ok": False}
+    generate = run_generate(client, sample, session_id)
+    return {**warmup, **generate}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Smoke-check the hosted Pixal3D Space (health, ready, HTML markers, optional generate).",
@@ -122,6 +157,10 @@ def build_parser() -> argparse.ArgumentParser:
 Examples:
   python scripts/space_smoke.py --health-only --html-check
   python scripts/space_smoke.py --url https://th3w1zard1-pixal3d.hf.space/ --generate
+
+`--generate` calls /warmup_runtime before /generate_3d with ZeroGPU-safe defaults
+(512 resolution, 5 stage steps). Anonymous cold runs may still hit GPU slice limits;
+sign in on the Space for reliable full generate checks.
         """.strip(),
     )
     parser.add_argument("--url", default=DEFAULT_SPACE_URL, help="Space base URL")
@@ -163,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     if args.generate and not args.health_only:
-        generate = run_generate(args.url, args.sample, args.generate_timeout)
+        generate = run_warmup_and_generate(args.url, args.sample, SMOKE_SESSION_ID)
         summary["generate_check"] = generate
         print(json.dumps(summary, indent=2, default=str))
         return 0 if generate.get("generate_ok") else 2
