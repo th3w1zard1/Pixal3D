@@ -64,6 +64,7 @@ It currently validates:
 - GitHub Actions workflow YAML parsing through `scripts/check_workflow_yaml.py`
 - syntax compilation for the core app and runtime files
 - live hosted Space smoke via `scripts/space_smoke.py --health-only --html-check` (`space-live-smoke` job)
+- on pushes to `main`, a non-blocking `repo-parity` job compares GitHub `main` to the public Hugging Face Space git ref and logs drift when `HF_TOKEN` sync was skipped
 
 It intentionally does not validate:
 

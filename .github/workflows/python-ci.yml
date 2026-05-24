@@ -60,3 +60,18 @@ jobs:
           python-version: "3.12"
       - name: Live Space health and HTML smoke
         run: python scripts/space_smoke.py --health-only --html-check
+
+  repo-parity:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Warn when GitHub main diverges from Hugging Face Space
+        run: |
+          set -euo pipefail
+          git remote add hf-space https://huggingface.co/spaces/th3w1zard1/Pixal3D
+          python scripts/check_repo_parity.py --github-remote origin --hf-remote hf-space
