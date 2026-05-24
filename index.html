@@ -1549,15 +1549,7 @@
                 client = await Client.connect(window.location.origin);
                 window.__pixal3dClientReady = true;
                 window.__pixal3dRunGeneration = () => startGeneration();
-                window.__pixal3dLoadSamplePath = async (path = 'assets/images/0_img.png') => {
-                    const res = await fetch(path);
-                    const blob = await res.blob();
-                    const ext = path.split('.').pop().toLowerCase();
-                    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
-                    const mime = mimeMap[ext] || 'image/png';
-                    const file = new File([blob], path.split('/').pop(), { type: mime });
-                    await handleImageUpload(file, { skipPreprocess: true });
-                };
+                window.__pixal3dLoadSamplePath = (path = 'assets/images/0_img.png') => loadSampleFromPath(path);
                 setupUI();
                 loadSamples();
                 hideViewerError();
@@ -1729,6 +1721,74 @@
             } finally {
                 isPreprocessing = false;
             }
+        }
+
+        function mimeForPath(path) {
+            const ext = path.split('.').pop().toLowerCase();
+            const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+            return mimeMap[ext] || 'image/png';
+        }
+
+        function showSourcePreviewFromUrl(url) {
+            const img = document.getElementById('source-preview');
+            const hint = document.getElementById('upload-hint');
+            img.src = url;
+            img.style.display = 'block';
+            hint.style.display = 'none';
+            setStep(1);
+            document.body.dataset.smokeFileReady = 'true';
+        }
+
+        async function fileFromGalleryImage(path) {
+            const name = path.split('/').pop();
+            const thumb = document.querySelector(`.example-item img[src*="${name}"]`);
+            if (!thumb || !thumb.complete || !thumb.naturalWidth) return null;
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = thumb.naturalWidth;
+                canvas.height = thumb.naturalHeight;
+                canvas.getContext('2d').drawImage(thumb, 0, 0);
+                const blob = await new Promise((resolve, reject) => {
+                    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas toBlob failed'))), 'image/png');
+                });
+                return new File([blob], name, { type: mimeForPath(path) });
+            } catch (err) {
+                console.warn('Gallery image fallback failed:', err);
+                return null;
+            }
+        }
+
+        async function fetchSampleFile(path, timeoutMs = 20000) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const res = await fetch(path, { signal: controller.signal, cache: 'force-cache' });
+                if (!res.ok) throw new Error(`fetch ${path} HTTP ${res.status}`);
+                const blob = await res.blob();
+                return new File([blob], path.split('/').pop(), { type: mimeForPath(path) });
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        async function loadSampleFromPath(path = 'assets/images/0_img.png') {
+            delete document.body.dataset.smokeLoadError;
+            delete document.body.dataset.smokeSampleLoad;
+            showSourcePreviewFromUrl(new URL(path, window.location.origin).href);
+            document.getElementById('generate-btn').disabled = true;
+            let file = null;
+            try {
+                file = await fetchSampleFile(path);
+            } catch (err) {
+                console.warn('Sample fetch failed, trying gallery thumbnail:', err);
+                file = await fileFromGalleryImage(path);
+            }
+            if (!file) {
+                document.body.dataset.smokeLoadError = 'sample-file-unavailable';
+                throw new Error('Could not load sample file');
+            }
+            await handleImageUpload(file, { skipPreprocess: true });
+            document.body.dataset.smokeSampleLoad = 'done';
         }
 
         async function handleImageUpload(file, options = {}) {
@@ -2512,15 +2572,12 @@
                 div.className = 'example-item';
                 div.innerHTML = `<img src="${path}" draggable="false">`;
                 div.onclick = async () => {
-                    showLoading();
-                    const res = await fetch(path);
-                    const blob = await res.blob();
-                    const ext = path.split('.').pop().toLowerCase();
-                    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
-                    const mime = mimeMap[ext] || 'image/png';
-                    const file = new File([blob], path.split('/').pop(), { type: mime });
-                    await handleImageUpload(file);
-                    hideLoading();
+                    try {
+                        await loadSampleFromPath(path);
+                    } catch (err) {
+                        console.error('Sample load failed:', err);
+                        showToast('Could not load sample image.');
+                    }
                 };
                 return div;
             }

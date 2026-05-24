@@ -1,7 +1,7 @@
 ---
 title: "fix: skip preprocess on smoke sample load"
 type: fix
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/SPACE_RECOVERY.md
 ---

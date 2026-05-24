@@ -110,9 +110,11 @@ if ! ab wait ".example-item" 30000 2>/dev/null; then
   exit 3
 fi
 
+sample_ready_js="document.body?.dataset?.smokeSampleLoad === 'done'"
+
 echo "==> Loading default gallery sample via smoke API"
 if ab_bool "typeof window.__pixal3dLoadSamplePath === 'function'"; then
-  ab eval "window.__pixal3dLoadSamplePath('assets/images/0_img.png'); 'fired'" >/dev/null 2>&1 || true
+  ab eval "(async () => { try { await window.__pixal3dLoadSamplePath('assets/images/0_img.png'); return 'ok'; } catch (e) { return 'err'; } })()" >/dev/null 2>&1 || true
 else
   if ! ab click "$SAMPLE_SELECTOR" 2>/dev/null; then
     echo "browser_glb_smoke: could not load default sample" >&2
@@ -120,10 +122,19 @@ else
   fi
 fi
 
-echo "==> Waiting for upload preview (max ${PREVIEW_WAIT_SEC}s)"
+echo "==> Waiting for sample file + preview (max ${PREVIEW_WAIT_SEC}s)"
 preview_ok=0
 for ((i = 0; i < PREVIEW_WAIT_SEC; i += 2)); do
-  if ab_bool "document.body?.dataset?.smokeFileReady === 'true' || !!document.getElementById('source-preview')?.src"; then
+  load_err="$(ab_text "document.body?.dataset?.smokeLoadError || ''")"
+  if [[ -n "$load_err" ]]; then
+    echo "browser_glb_smoke: sample load error (${load_err})" >&2
+    exit 2
+  fi
+  if ab_bool "$sample_ready_js"; then
+    preview_ok=1
+    break
+  fi
+  if ab_bool "document.body?.dataset?.smokeFileReady === 'true' && !!document.getElementById('source-preview')?.src"; then
     preview_ok=1
     break
   fi
@@ -133,8 +144,17 @@ done
 if [[ "$preview_ok" -ne 1 ]]; then
   echo "browser_glb_smoke: smoke API load slow; clicking gallery sample" >&2
   ab click "$SAMPLE_SELECTOR" 2>/dev/null || true
-  for ((i = 0; i < 45; i += 2)); do
-    if ab_bool "document.body?.dataset?.smokeFileReady === 'true' || !!document.getElementById('source-preview')?.src"; then
+  for ((i = 0; i < 60; i += 2)); do
+    load_err="$(ab_text "document.body?.dataset?.smokeLoadError || ''")"
+    if [[ -n "$load_err" ]]; then
+      echo "browser_glb_smoke: sample load error (${load_err})" >&2
+      exit 2
+    fi
+    if ab_bool "$sample_ready_js"; then
+      preview_ok=1
+      break
+    fi
+    if ab_bool "document.body?.dataset?.smokeFileReady === 'true' && !!document.getElementById('source-preview')?.src"; then
       preview_ok=1
       break
     fi
@@ -143,7 +163,7 @@ if [[ "$preview_ok" -ne 1 ]]; then
 fi
 
 if [[ "$preview_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: source preview / file-ready marker never appeared" >&2
+  echo "browser_glb_smoke: sample file not ready (data-smoke-sample-load never set)" >&2
   exit 2
 fi
 
