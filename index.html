@@ -966,7 +966,7 @@
     </style>
 </head>
 
-<body>
+<body data-smoke-default-sample="assets/images/0_img.png">
 
     <div class="app-shell">
         <!-- Left Sidebar: Controls -->
@@ -1549,6 +1549,7 @@
                 client = await Client.connect(window.location.origin);
                 setupUI();
                 loadSamples();
+                hideViewerError();
                 await refreshRuntimeStatus();
                 scheduleRuntimePollInterval(lastRuntimeHealth);
             } catch (err) {
