@@ -924,6 +924,24 @@
             display: none;
         }
 
+        .runtime-signin-link {
+            display: inline-block;
+            margin-top: 0.45rem;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #a5b4fc;
+            text-decoration: none;
+        }
+
+        .runtime-signin-link:hover {
+            color: #c7d2fe;
+            text-decoration: underline;
+        }
+
+        .runtime-signin-link[hidden] {
+            display: none;
+        }
+
         .btn-glow {
             border-color: rgba(16, 185, 129, 0.45);
             color: #d1fae5;
@@ -986,6 +1004,7 @@
                     </div>
                     <p id="runtime-status-text">The hosted runtime is cold. Generate will prime the model stack automatically.</p>
                     <p id="runtime-budget-hint" class="runtime-budget-hint" hidden></p>
+                    <a id="runtime-signin-link" class="runtime-signin-link" href="https://huggingface.co/login" target="_blank" rel="noopener noreferrer" hidden>Sign in on Hugging Face for higher ZeroGPU quota</a>
                 </div>
             </div>
 
@@ -1751,7 +1770,7 @@
             let ms = RUNTIME_POLL_MS_DEFAULT;
             if (isCpuStandby(health)) {
                 ms = RUNTIME_POLL_MS_FAST;
-            } else if (health?.runtime_mode !== 'zerogpu' && !lastRuntimeReady) {
+            } else if (!lastRuntimeReady) {
                 ms = RUNTIME_POLL_MS_FAST;
             }
             if (runtimeStatusInterval) clearInterval(runtimeStatusInterval);
@@ -1840,17 +1859,20 @@
 
         function updateRuntimeBudgetHint(health) {
             const hint = document.getElementById('runtime-budget-hint');
+            const signIn = document.getElementById('runtime-signin-link');
             if (!hint) return;
             const budgets = health?.zerogpu_gpu_budgets;
             if (health?.runtime_mode !== 'zerogpu' || !budgets) {
                 hint.hidden = true;
                 hint.textContent = '';
+                if (signIn) signIn.hidden = true;
                 return;
             }
             hint.hidden = false;
             hint.textContent =
                 `Hosted GPU slices: generate up to ${budgets.generation_max_seconds}s, export ${budgets.extract_seconds}s. ` +
                 `${budgets.quota_multiplier_note || 'Sign in on Hugging Face for higher daily quota.'}`;
+            if (signIn) signIn.hidden = false;
         }
 
         function updateExportProfileHint() {
