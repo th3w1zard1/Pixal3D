@@ -1550,15 +1550,13 @@
                 window.__pixal3dClientReady = true;
                 window.__pixal3dRunGeneration = () => startGeneration();
                 window.__pixal3dLoadSamplePath = async (path = 'assets/images/0_img.png') => {
-                    showLoading();
                     const res = await fetch(path);
                     const blob = await res.blob();
                     const ext = path.split('.').pop().toLowerCase();
                     const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
                     const mime = mimeMap[ext] || 'image/png';
                     const file = new File([blob], path.split('/').pop(), { type: mime });
-                    await handleImageUpload(file);
-                    hideLoading();
+                    await handleImageUpload(file, { skipPreprocess: true });
                 };
                 setupUI();
                 loadSamples();
@@ -1733,7 +1731,7 @@
             }
         }
 
-        async function handleImageUpload(file) {
+        async function handleImageUpload(file, options = {}) {
             currentFile = file;
             preprocessedFile = null;
             document.body.dataset.smokeFileReady = 'true';
@@ -1752,7 +1750,9 @@
                 reader.readAsDataURL(file);
             });
             updateGenerateAvailability(lastRuntimeHealth);
-            void runPreprocess(file);
+            if (!options.skipPreprocess) {
+                void runPreprocess(file);
+            }
         }
 
         function isCpuStandby(health) {
