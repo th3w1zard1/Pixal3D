@@ -6,4 +6,5 @@
 - Do not declare a hosted Space fix complete from source edits alone.
 - If runtime-facing files changed and there is no conflicting unrelated local work in those same files, deploy the candidate change to the test Space with the `hf` CLI.
 - After deploy, verify the live Space in a browser and run one end-to-end check with a default sample image before closing the task.
+- For hosted verification without a browser, run `python scripts/space_smoke.py --health-only --html-check` against the Space URL; use `--generate` only when quota allows.
 - If deployment is unsafe because the working tree contains unrelated runtime changes, say so explicitly instead of silently publishing them.
