@@ -106,9 +106,9 @@ ZEROGPU_MAX_DURATION_SECONDS = 120
 # Keep per-call reservations small so one cold generate fits typical free quota.
 # ZeroGPU may promote to xlarge (2x quota cost vs declared duration); cap accordingly.
 ZEROGPU_QUOTA_MULTIPLIER = 2
-ZEROGPU_WARMUP_DURATION_SECONDS = 25
-ZEROGPU_GENERATION_MAX_DURATION_SECONDS = 25
-ZEROGPU_EXTRACT_DURATION_SECONDS = 25
+ZEROGPU_WARMUP_DURATION_SECONDS = 30
+ZEROGPU_GENERATION_MAX_DURATION_SECONDS = 60
+ZEROGPU_EXTRACT_DURATION_SECONDS = 30
 ZEROGPU_MAX_RESOLUTION = 1024
 ZEROGPU_MAX_STAGE_STEPS = 5
 ZEROGPU_MAX_DECIMATION_TARGET = 500000
@@ -1346,7 +1346,7 @@ def generation_gpu_duration(
         )
         return min(
             ZEROGPU_GENERATION_MAX_DURATION_SECONDS,
-            max(25, 15 + total_steps * 2),
+            max(45, 30 + total_steps * 2),
         )
 
     # Cold model initialization is handled separately by `warmup_runtime`.

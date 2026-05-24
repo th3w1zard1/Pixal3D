@@ -1747,7 +1747,19 @@
             const unique = [...new Set(parts)];
             if (!unique.length) return fallback;
             const combined = unique.join(': ');
-            return combined.length > 260 ? combined.slice(0, 257) + '...' : combined;
+            const trimmed = combined.length > 260 ? combined.slice(0, 257) + '...' : combined;
+            return enrichZeroGpuError(trimmed);
+        }
+
+        function enrichZeroGpuError(message) {
+            if (!message || lastRuntimeHealth?.runtime_mode !== 'zerogpu') return message;
+            if (/quota exceeded/i.test(message)) {
+                return `${message} Hosted ZeroGPU may bill up to 2× the declared GPU slice on xlarge hardware — sign in at huggingface.co for a higher daily quota.`;
+            }
+            if (/GPU task aborted/i.test(message)) {
+                return `${message} The hosted GPU slice ended before the cold model stack finished. Retry after the daily quota resets or sign in for more ZeroGPU time.`;
+            }
+            return message;
         }
 
         function buildTransitionMessage(result, fallback) {
