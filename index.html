@@ -1418,6 +1418,7 @@
         const sessionId = crypto.randomUUID();
         let currentStep = 1;
         let runtimePrimed = false;
+        let lastRuntimeHealth = null;
         let runtimeStatusInterval = null;
 
         const MODES = [
@@ -1682,6 +1683,7 @@
                 const resp = await fetch('/health', { cache: 'no-store' });
                 if (!resp.ok) return;
                 const data = await resp.json();
+                lastRuntimeHealth = data;
                 const badge = document.getElementById('runtime-status-badge');
                 const text = document.getElementById('runtime-status-text');
                 const state = data.state || (data.ready ? 'ready' : 'pending');
@@ -1747,6 +1749,12 @@
 
         async function ensureRuntimePrimed() {
             if (runtimePrimed) return;
+
+            if (lastRuntimeHealth?.runtime_mode === 'zerogpu') {
+                // generate_3d already calls ensure_runtime_ready in its GPU slice;
+                // a separate warmup would stack another quota reservation.
+                return;
+            }
 
             startProgressListener();
             try {

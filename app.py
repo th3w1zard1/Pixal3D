@@ -103,6 +103,10 @@ MODES = [
 ]
 STEPS = 8
 ZEROGPU_MAX_DURATION_SECONDS = 120
+# Keep per-call reservations small so one cold generate fits typical free quota.
+ZEROGPU_WARMUP_DURATION_SECONDS = 50
+ZEROGPU_GENERATION_MAX_DURATION_SECONDS = 55
+ZEROGPU_EXTRACT_DURATION_SECONDS = 45
 ZEROGPU_MAX_RESOLUTION = 1024
 ZEROGPU_MAX_STAGE_STEPS = 5
 ZEROGPU_MAX_DECIMATION_TARGET = 500000
@@ -1338,7 +1342,10 @@ def generation_gpu_duration(
             + cast(int, request_settings["shape_slat_sampling_steps"])
             + cast(int, request_settings["tex_slat_sampling_steps"])
         )
-        return min(ZEROGPU_MAX_DURATION_SECONDS, max(60, 45 + total_steps * 5))
+        return min(
+            ZEROGPU_GENERATION_MAX_DURATION_SECONDS,
+            max(45, 30 + total_steps * 2),
+        )
 
     # Cold model initialization is handled separately by `warmup_runtime`.
     return 60 if resolution <= 1024 else 180
@@ -1352,7 +1359,7 @@ def extract_glb_gpu_duration(
 ) -> int:
     del state_path, decimation_target, texture_size, session_id
     if resolve_runtime_mode(os.environ, torch.cuda.is_available()) == "zerogpu":
-        return ZEROGPU_MAX_DURATION_SECONDS
+        return ZEROGPU_EXTRACT_DURATION_SECONDS
     return 30
 
 
@@ -1492,8 +1499,15 @@ def preprocess(image: FileData) -> FileData:
     return FileData(path=out_path)
 
 
+def warmup_gpu_duration(session_id: str = "") -> int:
+    del session_id
+    if resolve_runtime_mode(os.environ, torch.cuda.is_available()) == "zerogpu":
+        return ZEROGPU_WARMUP_DURATION_SECONDS
+    return 120
+
+
 @app.api()
-@spaces.GPU(duration=120)
+@spaces.GPU(duration=warmup_gpu_duration)
 def warmup_runtime(session_id: str = "") -> Dict:
     _reset_progress(session_id)
     stage = "Preparing runtime"
