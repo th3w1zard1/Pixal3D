@@ -149,3 +149,15 @@ Check GitHub↔HF drift any time (exits 0 when remotes match):
 ```bash
 python scripts/check_repo_parity.py
 ```
+
+### Enabling automatic GitHub → Hugging Face sync
+
+The sync workflow needs a Hugging Face token with write access to the Space repository.
+
+1. Create a token at [Hugging Face Settings → Access Tokens](https://huggingface.co/settings/tokens) with **write** permission for `th3w1zard1/Pixal3D` (or use a fine-grained token scoped to that Space).
+2. In GitHub: **Settings → Secrets and variables → Actions → New repository secret**.
+3. Name the secret `HF_TOKEN` and paste the token value.
+4. Manually dispatch **Sync Hugging Face Space** once with `create_if_missing=false`, or push to `main` and confirm the workflow sync job runs.
+5. Verify with `python scripts/check_repo_parity.py` and `python scripts/space_smoke.py --health-only --html-check`.
+
+When `HF_TOKEN` is absent, pushes to `main` still pass CI; the non-blocking `repo-parity` job logs drift instead.
