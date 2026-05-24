@@ -48,6 +48,11 @@ def resolve_space_config(env: Mapping[str, str] | None = None) -> SpaceConfig:
     )
 
 
+def space_public_url(config: SpaceConfig) -> str:
+    slug = config.repo_id.lower().replace("/", "-")
+    return f"https://{slug}.hf.space/"
+
+
 def write_github_outputs(
     config: SpaceConfig,
     output_path: str | None = None,
@@ -61,6 +66,7 @@ def write_github_outputs(
         output_file.write(f"repo_name={config.repo_name}\n")
         output_file.write(f"repo_namespace={config.repo_namespace}\n")
         output_file.write(f"space_sdk={config.space_sdk}\n")
+        output_file.write(f"space_url={space_public_url(config)}\n")
 
 
 def main() -> int:
@@ -71,6 +77,7 @@ def main() -> int:
     print(f"repo_name={config.repo_name}")
     print(f"repo_namespace={config.repo_namespace}")
     print(f"space_sdk={config.space_sdk}")
+    print(f"space_url={space_public_url(config)}")
     return 0
 
 
