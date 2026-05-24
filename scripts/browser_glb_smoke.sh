@@ -137,44 +137,31 @@ sample_ready_js="document.body?.dataset?.smokeSampleLoad === 'done'"
 
 echo "==> Loading default gallery sample (max ${PREVIEW_WAIT_SEC}s)"
 preview_ok=0
-load_result=""
 if ab_bool "typeof window.__pixal3dLoadSamplePath === 'function'"; then
-  load_result="$(ab_text "(async () => {
-    try {
-      await window.__pixal3dLoadSamplePath('assets/images/0_img.png');
-      return window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || 'unknown';
-    } catch (e) {
-      return 'err:' + (e?.message || String(e));
-    }
-  })()")"
-  echo "browser_glb_smoke: load result=${load_result}"
-  if [[ "$load_result" == "done" ]]; then
-    preview_ok=1
-  elif [[ "$load_result" == err:* ]]; then
-    echo "browser_glb_smoke: sample load failed (${load_result})" >&2
-    exit 2
-  fi
+  ab eval "window.__pixal3dLoadSamplePath('assets/images/0_img.png').catch((e) => { window.__pixal3dSmokeSampleStatus = 'err:' + (e?.message || String(e)); }); 'started'" >/dev/null 2>&1 || true
 else
   echo "browser_glb_smoke: __pixal3dLoadSamplePath missing" >&2
   exit 3
 fi
 
-if [[ "$preview_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: awaiting sample markers (fallback poll)" >&2
-  for ((i = 0; i < PREVIEW_WAIT_SEC; i += 2)); do
-    status="$(ab_text "window.__pixal3dSmokeSampleStatus || document.body?.dataset?.smokeSampleLoad || ''")"
-    load_err="$(ab_text "document.body?.dataset?.smokeLoadError || ''")"
-    if [[ -n "$load_err" ]]; then
-      echo "browser_glb_smoke: sample load error (${load_err})" >&2
-      exit 2
-    fi
-    if [[ "$status" == "done" ]] || ab_bool "$sample_ready_js"; then
-      preview_ok=1
-      break
-    fi
-    sleep 2
-  done
-fi
+for ((i = 0; i < PREVIEW_WAIT_SEC; i += 2)); do
+  status="$(ab_text "window.__pixal3dSmokeSampleStatus || document.body?.dataset?.smokeSampleLoad || ''")"
+  load_err="$(ab_text "document.body?.dataset?.smokeLoadError || ''")"
+  if [[ -n "$load_err" ]]; then
+    echo "browser_glb_smoke: sample load error (${load_err})" >&2
+    exit 2
+  fi
+  if [[ "$status" == err:* ]]; then
+    echo "browser_glb_smoke: sample load failed (${status})" >&2
+    exit 2
+  fi
+  if [[ "$status" == "done" ]] || ab_bool "$sample_ready_js"; then
+    preview_ok=1
+    echo "browser_glb_smoke: load status=${status:-done}"
+    break
+  fi
+  sleep 2
+done
 
 if [[ "$preview_ok" -ne 1 ]]; then
   echo "browser_glb_smoke: clicking gallery sample (last resort)" >&2
@@ -199,18 +186,8 @@ if [[ "$preview_ok" -ne 1 ]]; then
   exit 2
 fi
 
-echo "==> Waiting for generation hook after sample load (max 120s)"
-hook_ok=0
-for ((i = 0; i < 120; i += 3)); do
-  if ab_bool "window.__pixal3dClientReady === true && typeof window.__pixal3dRunGeneration === 'function'"; then
-    hook_ok=1
-    break
-  fi
-  sleep 3
-done
-
-if [[ "$hook_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: generation hook missing after sample load (re-open Space and retry)" >&2
+if ! ab_bool "typeof window.__pixal3dRunGeneration === 'function'"; then
+  echo "browser_glb_smoke: generation hook missing before start" >&2
   exit 3
 fi
 
