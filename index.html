@@ -907,6 +907,17 @@
             line-height: 1.55;
         }
 
+        .runtime-budget-hint {
+            margin-top: 0.35rem;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            opacity: 0.9;
+        }
+
+        .runtime-budget-hint[hidden] {
+            display: none;
+        }
+
         .btn-glow {
             border-color: rgba(16, 185, 129, 0.45);
             color: #d1fae5;
@@ -968,6 +979,7 @@
                         <span class="runtime-badge" id="runtime-status-badge" data-state="pending">Cold</span>
                     </div>
                     <p id="runtime-status-text">The hosted runtime is cold. Generate will prime the model stack automatically.</p>
+                    <p id="runtime-budget-hint" class="runtime-budget-hint" hidden></p>
                 </div>
             </div>
 
@@ -1721,6 +1733,7 @@
                     : (data.message || 'The hosted runtime is cold. Generate will prime the model stack automatically.');
                 runtimePrimed = !!data.ready;
                 applyZeroGpuHostedDefaults(data);
+                updateRuntimeBudgetHint(data);
             } catch (err) {
                 console.debug('Runtime status probe failed:', err);
             }
@@ -1734,6 +1747,21 @@
                 exportSelect.dataset.zerogpuDefaulted = '1';
                 updateExportProfileHint();
             }
+        }
+
+        function updateRuntimeBudgetHint(health) {
+            const hint = document.getElementById('runtime-budget-hint');
+            if (!hint) return;
+            const budgets = health?.zerogpu_gpu_budgets;
+            if (health?.runtime_mode !== 'zerogpu' || !budgets) {
+                hint.hidden = true;
+                hint.textContent = '';
+                return;
+            }
+            hint.hidden = false;
+            hint.textContent =
+                `Hosted GPU slices: generate up to ${budgets.generation_max_seconds}s, export ${budgets.extract_seconds}s. ` +
+                `${budgets.quota_multiplier_note || 'Sign in on Hugging Face for higher daily quota.'}`;
         }
 
         function updateExportProfileHint() {
