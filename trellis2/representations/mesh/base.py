@@ -32,6 +32,10 @@ def _require_grid_sample_3d() -> Any:
     return grid_sample_3d
 
 
+def cuda_mesh_operators_available() -> bool:
+    return cumesh is not None
+
+
 class Mesh:
     def __init__(self, vertices, faces, vertex_attrs=None):
         self.vertices = vertices.float()
