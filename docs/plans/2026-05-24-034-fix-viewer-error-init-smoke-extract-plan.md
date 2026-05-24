@@ -1,7 +1,7 @@
 ---
 title: "fix: clear idle viewer error and assert extract in smoke"
 type: fix
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-033-feat-zerogpu-glb-extract-ux-plan.md
 ---
