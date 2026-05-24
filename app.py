@@ -275,12 +275,18 @@ def resolve_generation_plan(
     cuda_available: bool | None = None,
 ) -> dict[str, object]:
     device = resolve_execution_device(env, cuda_available)
+    runtime_mode = resolve_runtime_mode(env, cuda_available)
     from trellis2.representations.mesh.base import cuda_mesh_operators_available
 
+    render_preview = (
+        device == "cuda"
+        and cuda_mesh_operators_available()
+        and runtime_mode != "zerogpu"
+    )
     return {
         "execution_device": device,
-        "render_preview": device == "cuda" and cuda_mesh_operators_available(),
-        "runtime_mode": resolve_runtime_mode(env, cuda_available),
+        "render_preview": render_preview,
+        "runtime_mode": runtime_mode,
     }
 
 
@@ -1235,7 +1241,7 @@ def _generate_3d_impl(
                 }
             )
         except RuntimeError as exc:
-            if not _is_mesh_operator_error(exc):
+            if resolve_runtime_mode(os.environ, torch.cuda.is_available()) != "zerogpu" and not _is_mesh_operator_error(exc):
                 raise
             _update_progress("Exporting GLB (preview unavailable)", 0, 1)
             glb_path = export_basic_glb(mesh, session_id=session_id)
@@ -1253,16 +1259,25 @@ def _generate_3d_impl(
                 }
             )
     else:
-        _update_progress("Exporting CPU GLB", 0, 1)
+        export_label = (
+            "Exporting GLB"
+            if resolve_runtime_mode(os.environ, torch.cuda.is_available()) == "zerogpu"
+            else "Exporting CPU GLB"
+        )
+        _update_progress(export_label, 0, 1)
         glb_path = export_basic_glb(mesh, session_id=session_id)
-        _update_progress("Exporting CPU GLB", 1, 1)
+        _update_progress(export_label, 1, 1)
         result.update(
             {
                 "render_paths": {},
                 "preview_available": False,
                 "extract_available": False,
                 "glb_path": os.path.abspath(glb_path),
-                "message": "Generated a geometry-only GLB on CPU hardware.",
+                "message": (
+                    "Generated a geometry-only GLB on ZeroGPU (preview frames skipped)."
+                    if resolve_runtime_mode(os.environ, torch.cuda.is_available()) == "zerogpu"
+                    else "Generated a geometry-only GLB on CPU hardware."
+                ),
             }
         )
 
