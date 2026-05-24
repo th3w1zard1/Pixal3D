@@ -48,4 +48,14 @@ if [[ "$RUN_GENERATE" -eq 1 ]]; then
   "${VENV}/bin/python" scripts/space_smoke.py --url "$SPACE_URL" --generate
 fi
 
+cat <<'EOF'
+
+Browser E2E (manual — run before --generate in the same session):
+  1. Open the Space URL in a browser
+  2. Confirm no viewer error overlay on load
+  3. Click gallery sample assets/images/0_img.png (512 resolution)
+  4. Start Generation → expect step 3 GLB or explicit quota/error message
+
+EOF
+
 echo "OK: hosted verification complete"
