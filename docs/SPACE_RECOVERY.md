@@ -13,10 +13,9 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 
 ## Verification order (agents)
 
-1. `python3 scripts/check_repo_parity.py`
-2. `python3 scripts/space_smoke.py --health-only --html-check`
-3. **Browser** (optional but required by AGENTS.md before closing runtime work): load Space → confirm no idle viewer error → gallery `assets/images/0_img.png` → Generate at 512 → expect step 3 GLB or explicit quota/error copy
-4. `space_smoke.py --generate` **only after** browser, or on a separate day — CLI cold generate uses ~120s of ZeroGPU quota and will cause the browser run to fail if run first
+1. `./scripts/verify_hosted_space.sh` (parity + health/HTML)
+2. **Browser** (before `--generate` in the same session): gallery `assets/images/0_img.png` → Generate at 512 → step 3 GLB or explicit quota/error copy
+3. `./scripts/verify_hosted_space.sh --generate` only after browser, or on another day
 
 ## What was fixed
 
@@ -31,10 +30,8 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 ## Operator commands
 
 ```bash
-python3 scripts/check_repo_parity.py
-python3 scripts/space_smoke.py --health-only --html-check
-python3 -m venv .venv && .venv/bin/pip install -r scripts/smoke-requirements.txt
-.venv/bin/python scripts/space_smoke.py --generate
+./scripts/verify_hosted_space.sh
+./scripts/verify_hosted_space.sh --generate   # optional; uses ZeroGPU quota
 ```
 
 - **CI (manual):** GitHub Actions → **Python CI** → **Run workflow** → `space-generate-smoke` (`--generate`, ~2–3 min, uses quota).
@@ -42,7 +39,7 @@ python3 -m venv .venv && .venv/bin/pip install -r scripts/smoke-requirements.txt
 
 ## Browser note (2026-05-24)
 
-Gallery sample `0_img.png` at 512 with idle error hidden; Generate reached step 3 but failed with full **ZeroGPU quota exceeded** copy (`120s requested vs. 19s left`) after prior CLI smokes in the same quota window. This is expected operator behavior, not an empty-overlay regression.
+Gallery sample `0_img.png` at 512 with idle error hidden; Generate reached step 3 but failed with full **ZeroGPU quota exceeded** copy (`120s requested vs. 19s left`) when anonymous daily quota is exhausted. Re-tested without prior CLI generate in-session: same quota message. Sign in on the Space or retry after reset for browser GLB proof; not an empty-overlay regression.
 
 ## Remotes
 

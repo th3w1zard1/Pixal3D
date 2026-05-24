@@ -81,6 +81,12 @@ It intentionally does not validate:
 For local or agent verification of the hosted Space without a browser:
 
 ```bash
+./scripts/verify_hosted_space.sh
+```
+
+Equivalent manual steps:
+
+```bash
 python scripts/space_smoke.py --health-only --html-check
 ```
 
