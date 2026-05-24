@@ -1832,7 +1832,8 @@
                     text.textContent = 'Runtime is hot. Generation should start immediately unless the hosted queue is saturated.';
                 } else if (data.runtime_mode === 'zerogpu') {
                     text.textContent =
-                        'ZeroGPU cold start. Your first Generate loads the model stack inside a hosted GPU slice — no separate warmup needed.';
+                        'ZeroGPU cold start. First Generate loads the model stack in a hosted GPU slice. ' +
+                        'If the slice ends early while models load, sign in below for more quota or retry after the daily reset.';
                 } else {
                     text.textContent = data.message || 'Models are warming on the hosted GPU. Generate unlocks when ready.';
                 }
@@ -1872,7 +1873,10 @@
             hint.textContent =
                 `Hosted GPU slices: generate up to ${budgets.generation_max_seconds}s, export ${budgets.extract_seconds}s. ` +
                 `${budgets.quota_multiplier_note || 'Sign in on Hugging Face for higher daily quota.'}`;
-            if (signIn) signIn.hidden = false;
+            if (signIn) {
+                signIn.hidden = false;
+                signIn.href = `https://huggingface.co/login?next=${encodeURIComponent(window.location.href)}`;
+            }
         }
 
         function updateExportProfileHint() {
@@ -2347,7 +2351,10 @@
             if (!el) return;
             const title = (opts && opts.title) || 'Generation could not complete';
             const msgText = (message && String(message).trim()) || 'An unknown error occurred.';
-            document.getElementById('viewer-error-title').textContent = title;
+            const resolvedTitle = /GPU task aborted/i.test(msgText)
+                ? 'GPU slice ended early'
+                : (/quota exceeded/i.test(msgText) ? 'ZeroGPU quota reached' : title);
+            document.getElementById('viewer-error-title').textContent = resolvedTitle;
             document.getElementById('viewer-error-message').textContent = msgText;
             const signIn = document.getElementById('viewer-error-signin');
             if (signIn) {
