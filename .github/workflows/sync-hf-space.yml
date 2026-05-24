@@ -37,26 +37,41 @@ permissions:
     contents: read
 
 jobs:
-    preflight:
+    gate:
         # Sync on manual dispatch or every push to main unless HF_SPACE_AUTO_SYNC=false.
         if: >-
           github.event_name == 'workflow_dispatch'
           || (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.HF_SPACE_AUTO_SYNC != 'false')
         runs-on: ubuntu-latest
         outputs:
-            repo_id: ${{ steps.resolve.outputs.repo_id }}
-            space_sdk: ${{ steps.resolve.outputs.space_sdk }}
-            space_url: ${{ steps.resolve.outputs.space_url }}
+            sync_enabled: ${{ steps.token.outputs.sync_enabled }}
         steps:
-            - name: Validate Hugging Face token secret
+            - name: Resolve Hugging Face sync gate
+              id: token
               env:
                   HF_TOKEN: ${{ secrets.HF_TOKEN }}
               run: |
-                  if [[ -z "$HF_TOKEN" ]]; then
+                  if [[ -n "$HF_TOKEN" ]]; then
+                    echo "sync_enabled=true" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
+                  if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
                     echo "HF_TOKEN is required for sync-hf-space.yml." >&2
                     echo "Add the HF_TOKEN repository secret before dispatching this workflow." >&2
                     exit 1
                   fi
+                  echo "HF_TOKEN not configured; skipping automatic Hugging Face Space sync." >&2
+                  echo "sync_enabled=false" >> "$GITHUB_OUTPUT"
+
+    preflight:
+        needs: gate
+        if: needs.gate.outputs.sync_enabled == 'true'
+        runs-on: ubuntu-latest
+        outputs:
+            repo_id: ${{ steps.resolve.outputs.repo_id }}
+            space_sdk: ${{ steps.resolve.outputs.space_sdk }}
+            space_url: ${{ steps.resolve.outputs.space_url }}
+        steps:
             - uses: actions/checkout@v6
               with:
                   fetch-depth: 0
@@ -86,8 +101,8 @@ jobs:
               run: python scripts/ensure_hf_space.py
 
     sync:
-        needs: preflight
-        if: needs.preflight.result == 'success'
+        needs: [gate, preflight]
+        if: needs.gate.outputs.sync_enabled == 'true' && needs.preflight.result == 'success'
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
@@ -104,8 +119,8 @@ jobs:
                   private: ${{ github.event.inputs.hf_space_private || vars.HF_SPACE_PRIVATE || 'false' }}
 
     verify:
-        needs: [preflight, sync]
-        if: needs.sync.result == 'success'
+        needs: [gate, preflight, sync]
+        if: needs.gate.outputs.sync_enabled == 'true' && needs.sync.result == 'success'
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
