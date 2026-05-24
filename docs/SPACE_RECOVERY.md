@@ -13,7 +13,7 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 | Backend `/generate_3d` (CLI) | **Pass** — anonymous cold run ~124s, `glb_path`, `extract_available: true` (2026-05-24) |
 | Health + HTML smoke | **Pass** — markers + ZeroGPU recovery fields (`BiRefNet_lite`, prefetch, 120s cold slice, `cuda_mesh_operators`) |
 | GitHub ↔ HF parity | **Pass** — `check_repo_parity.py` on `main` |
-| Browser gallery → GLB | **Operator-verified** — run checklist printed by `verify_hosted_space.sh` before `--generate`; agent browser MCP unavailable 2026-05-24 (plan 041); prior runs also hit quota when slice exhausted (~19s left vs 120s requested) |
+| Browser gallery → GLB | **Operator-verified** — `./scripts/browser_glb_smoke.sh` (agent-browser); plan 042 run: gallery+generate OK, no GLB within 200s (retry with `--generate-wait 300` or fresh quota) |
 
 ## Verification order (agents)
 
@@ -45,7 +45,7 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 
 Gallery sample `0_img.png` at 512 with idle error hidden. When anonymous quota is exhausted, Generate shows full **ZeroGPU quota exceeded** copy (not an empty overlay). With quota available, expect step 3 GLB viewer load after ~2–3 minutes cold.
 
-**Agent-browser (plan 041):** Space loads with COLD status, 512 default, and no idle viewer error in snapshot; gallery click on `0_img.png` did not confirm upload before Generate in this run (reload lost tab context). Confirm GLB outcome manually via the checklist above. Sign in on the Space for higher quota.
+**Automated browser (plan 042):** `scripts/browser_glb_smoke.sh` clicks gallery `0_img.png`, starts Generate via JS click (button may stay `disabled` while preprocess runs). On 2026-05-24 the script timed out at 200s with no viewer error — likely cold generate still running or quota-limited; use `--generate-wait 300` or sign in for higher quota.
 
 ## Remotes
 

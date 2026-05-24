@@ -13,7 +13,7 @@ Space recovery for the hosted ZeroGPU demo is **closed**. Use this page after me
 ## Verification order
 
 1. `./scripts/verify_hosted_space.sh` — parity + live health/HTML (no quota burn).
-2. **Browser** — gallery `assets/images/0_img.png` at 512 → Generate → step 3 GLB viewer (see checklist printed by the verify script).
+2. **Browser** — `./scripts/browser_glb_smoke.sh` (requires `agent-browser`), or manual gallery `assets/images/0_img.png` at 512 → Generate → step 3 GLB viewer.
 3. `./scripts/verify_hosted_space.sh --generate` — only after browser, or on a fresh quota window.
 
 ## What to build next
