@@ -1,7 +1,7 @@
 ---
 title: "feat: final E2E verification gate and operator surfacing"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/SPACE_RECOVERY.md
 ---
