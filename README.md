@@ -38,7 +38,7 @@ In short, the project is prioritizing dependable workflow and deployment hygiene
 - On hosted ZeroGPU (`ACCELERATOR=zero*`), the Space defaults to `BiRefNet_lite` for faster cold warmup unless `PIXAL3D_REMBG_MODEL` is set
 - On hosted ZeroGPU, `PIXAL3D_LOW_VRAM=1` is enabled by default so MoGe and env maps stay on CPU until needed
 - Hosted Spaces prefetch Hub weights on CPU in the background (`hub_prefetch_state` on `/health`); set `PIXAL3D_HUB_PREFETCH=0` to disable
-- Preview frame rendering needs CUDA mesh operators (`cumesh`); `/health` reports `cuda_mesh_operators`. When unavailable, `generate_3d` exports a geometry-only GLB instead of preview frames
+- Preview frame rendering needs CUDA mesh operators (`cumesh`); `/health` reports `cuda_mesh_operators`. Hosted ZeroGPU uses a geometry-only GLB export path (no preview frames) to stay within GPU slice limits; other CUDA runtimes still render previews when operators are available
 - Health endpoint: `/health`
 - Readiness endpoint: `/ready` returns `200` only after the GPU runtime is actually primed
 
