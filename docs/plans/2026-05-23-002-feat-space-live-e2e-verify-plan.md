@@ -1,7 +1,7 @@
 ---
 title: "feat: Complete live Pixal3D Space E2E verification"
 type: feat
-status: active
+status: completed
 date: 2026-05-23
 origin: docs/plans/2026-05-23-001-feat-space-frontend-e2e-plan.md
 ---
