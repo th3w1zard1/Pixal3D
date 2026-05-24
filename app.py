@@ -555,6 +555,9 @@ def move_runtime_to(device: str | torch.device) -> None:
 def _is_mesh_operator_error(exc: BaseException) -> bool:
     message = str(exc)
     return "CUDA mesh operators" in message or "requires CUDA mesh" in message
+
+
+def export_basic_glb(mesh, session_id: str = "") -> str:
     import trimesh
 
     trimesh_mesh = trimesh.Trimesh(
