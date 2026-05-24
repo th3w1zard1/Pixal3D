@@ -18,6 +18,7 @@ supersedes: docs/plans/2026-05-24-047-fix-smoke-skip-preprocess-plan.md
 - R1. `__pixal3dLoadSamplePath` sets preview UI and `data-smoke-file-ready` synchronously, then resolves `currentFile` with a bounded `fetch` (timeout) and DOM img fallback.
 - R2. Gallery example clicks use `skipPreprocess: true` (smoke parity; preprocess remains available for manual uploads).
 - R3. `browser_glb_smoke.sh` polls load completion via `data-smoke-sample-load` / `data-smoke-load-error` (no fire-and-forget eval only).
+- R3b. Smoke mode (`?smoke=1`) skips cpu→zerogpu auto-reload; script waits for `data-runtime-mode=zerogpu` before sample load.
 - R4. Deploy `main` to HF + GitHub; browser smoke exit **0** (GLB) or **1** (quota); update `docs/SPACE_RECOVERY.md`.
 - R5. Mark plans 047 and 048 `status: completed` when verified.
 

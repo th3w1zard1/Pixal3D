@@ -1509,6 +1509,10 @@
             }
         };
         const PREPROCESS_TIMEOUT_MS = 120000;
+        const smokeTestMode = new URLSearchParams(window.location.search).has('smoke');
+        if (smokeTestMode) {
+            window.__pixal3dSmokeTest = true;
+        }
 
         function withTimeout(promise, timeoutMs, label) {
             return Promise.race([
@@ -1863,6 +1867,7 @@
             lastObservedRuntimeMode = mode;
             if (prev == null || prev !== 'cpu' || mode !== 'zerogpu') return;
             if (isGenerationBusy() || isPreprocessing) return;
+            if (window.__pixal3dSmokeTest) return;
             showToast('ZeroGPU runtime is ready. Reloading in 3 seconds…', 5000);
             setTimeout(() => location.reload(), 3000);
         }
@@ -1884,6 +1889,9 @@
                     } catch (_) { /* ignore */ }
                 }
                 lastRuntimeHealth = data;
+                if (data.runtime_mode) {
+                    document.body.dataset.runtimeMode = data.runtime_mode;
+                }
                 const badge = document.getElementById('runtime-status-badge');
                 const text = document.getElementById('runtime-status-text');
                 let state = data.state || (lastRuntimeReady ? 'ready' : 'pending');

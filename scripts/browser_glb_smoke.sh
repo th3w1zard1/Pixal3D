@@ -7,6 +7,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 SPACE_URL="${PIXAL3D_SPACE_URL:-https://th3w1zard1-pixal3d.hf.space/}"
+if [[ "$SPACE_URL" != *smoke=1* ]]; then
+  if [[ "$SPACE_URL" == *"?"* ]]; then
+    SPACE_URL="${SPACE_URL}&smoke=1"
+  else
+    SPACE_URL="${SPACE_URL%/}?smoke=1"
+  fi
+fi
 SAMPLE_SELECTOR=".example-item img[src*='0_img']"
 CLIENT_WAIT_SEC="${BROWSER_SMOKE_CLIENT_WAIT_SEC:-120}"
 PREVIEW_WAIT_SEC="${BROWSER_SMOKE_PREVIEW_WAIT_SEC:-90}"
@@ -102,6 +109,20 @@ done
 
 if [[ "$client_ok" -ne 1 ]]; then
   echo "browser_glb_smoke: Gradio client not ready (__pixal3dRunGeneration missing)" >&2
+  exit 3
+fi
+
+echo "==> Waiting for ZeroGPU runtime (max ${CLIENT_WAIT_SEC}s, skip cpu→gpu reload race)"
+runtime_ok=0
+for ((i = 0; i < CLIENT_WAIT_SEC; i += 3)); do
+  if ab_bool "document.body?.dataset?.runtimeMode === 'zerogpu'"; then
+    runtime_ok=1
+    break
+  fi
+  sleep 3
+done
+if [[ "$runtime_ok" -ne 1 ]]; then
+  echo "browser_glb_smoke: ZeroGPU runtime not reported yet (data-runtime-mode)" >&2
   exit 3
 fi
 
