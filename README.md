@@ -90,7 +90,7 @@ python3 -m venv .venv
 .venv/bin/python scripts/space_smoke.py --generate
 ```
 
-On hosted ZeroGPU, `--generate` skips `/warmup_runtime` and calls `/generate_3d` directly (same as the browser UI). The first cold generate requests a 120s ZeroGPU slice while the pipeline is unloaded; warm runs stay on the 60s cap. Check `/health` for `rembg_model`, `low_vram`, `hub_prefetch_state`, and `cuda_mesh_operators` after deploy.
+On hosted ZeroGPU, `--generate` skips `/warmup_runtime` and calls `/generate_3d` directly (same as the browser UI). The first cold generate requests a 120s ZeroGPU slice while the pipeline is unloaded; warm runs stay on the 60s cap. Expect a geometry-only GLB (`glb_path`) in ~2–3 minutes for anonymous cold runs. Check `/health` for `rembg_model`, `low_vram`, `hub_prefetch_state`, `cuda_mesh_operators`, and `zerogpu_gpu_budgets.cold_generation_max_seconds`.
 
 ### Release behavior
 
