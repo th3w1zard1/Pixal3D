@@ -131,7 +131,7 @@ TOTAL_WAIT=$((PREVIEW_WAIT_SEC + GENERATE_WAIT_SEC + 60))
 echo "==> Smoke advance ticks (max ${TOTAL_WAIT}s, preview ${PREVIEW_WAIT_SEC}s + generate ${GENERATE_WAIT_SEC}s)"
 last=""
 for ((i = 0; i < TOTAL_WAIT; i += 3)); do
-  tick="$(ab_text "(async () => (window.__pixal3dSmokeAdvance ? await window.__pixal3dSmokeAdvance() : 'no-hook'))()")"
+  tick="$(ab_text "typeof window.__pixal3dSmokeAdvance === 'function' ? window.__pixal3dSmokeAdvance() : 'no-hook'")"
   if [[ -n "$tick" && "$tick" != "$last" ]]; then
     echo "browser_glb_smoke: tick=${tick} (${i}s)"
     last="$tick"
