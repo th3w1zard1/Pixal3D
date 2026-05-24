@@ -1748,6 +1748,13 @@
             const deadline = Date.now() + waitMs;
             while (Date.now() < deadline) {
                 const thumb = document.querySelector(`.example-item img[src*="${name}"]`);
+                if (thumb && !thumb.complete) {
+                    await new Promise((resolve) => {
+                        thumb.addEventListener('load', resolve, { once: true });
+                        thumb.addEventListener('error', resolve, { once: true });
+                        setTimeout(resolve, 3000);
+                    });
+                }
                 if (thumb && thumb.complete && thumb.naturalWidth) {
                     try {
                         const canvas = document.createElement('canvas');

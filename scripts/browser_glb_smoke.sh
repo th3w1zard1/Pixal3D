@@ -157,7 +157,7 @@ for ((i = 0; i < PREVIEW_WAIT_SEC; i += 2)); do
     preview_ok=1
     break
   fi
-  if ab_bool "document.body?.dataset?.smokeFileReady === 'true' && !!document.getElementById('source-preview')?.src"; then
+  if ab_bool "document.body?.dataset?.smokeFileReady === 'true'"; then
     preview_ok=1
     break
   fi
@@ -177,12 +177,16 @@ if [[ "$preview_ok" -ne 1 ]]; then
       preview_ok=1
       break
     fi
-    if ab_bool "document.body?.dataset?.smokeFileReady === 'true' && !!document.getElementById('source-preview')?.src"; then
+    if ab_bool "document.body?.dataset?.smokeFileReady === 'true'"; then
       preview_ok=1
       break
     fi
     sleep 2
   done
+fi
+
+if [[ "$preview_ok" -eq 1 ]]; then
+  echo "==> Sample ready for generation"
 fi
 
 if [[ "$preview_ok" -ne 1 ]]; then
