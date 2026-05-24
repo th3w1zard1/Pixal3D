@@ -199,12 +199,10 @@ if [[ "$preview_ok" -ne 1 ]]; then
   exit 2
 fi
 
-sleep 3
-
-echo "==> Waiting for generation hook after upload (max 60s)"
+echo "==> Waiting for generation hook after sample load (max 120s)"
 hook_ok=0
-for ((i = 0; i < 60; i += 3)); do
-  if ab_bool "typeof window.__pixal3dRunGeneration === 'function'"; then
+for ((i = 0; i < 120; i += 3)); do
+  if ab_bool "window.__pixal3dClientReady === true && typeof window.__pixal3dRunGeneration === 'function'"; then
     hook_ok=1
     break
   fi
@@ -212,7 +210,7 @@ for ((i = 0; i < 60; i += 3)); do
 done
 
 if [[ "$hook_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: generation hook missing (page may have reloaded)" >&2
+  echo "browser_glb_smoke: generation hook missing after sample load (re-open Space and retry)" >&2
   exit 3
 fi
 
