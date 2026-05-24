@@ -1445,6 +1445,16 @@
                 hint: "Maximum texture fidelity. Use when the runtime is already warm and you have quota headroom."
             }
         };
+        const PREPROCESS_TIMEOUT_MS = 120000;
+
+        function withTimeout(promise, timeoutMs, label) {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+                }),
+            ]);
+        }
 
         // Global queue status polling
         function startQueuePolling() {
@@ -1620,25 +1630,15 @@
             });
         }
 
-        async function handleImageUpload(file) {
-            currentFile = file;
-            preprocessedFile = null;
+        async function runPreprocess(file) {
             isPreprocessing = true;
-            document.getElementById('generate-btn').disabled = true;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const img = document.getElementById('source-preview');
-                const hint = document.getElementById('upload-hint');
-                img.src = e.target.result;
-                img.style.display = 'block';
-                hint.style.display = 'none';
-                setStep(1);
-            };
-            reader.readAsDataURL(file);
-
-            // Call preprocess and update with segmented result
+            showToast("Removing background...", 4000);
             try {
-                const result = await client.predict("/preprocess", { image: handle_file(file) });
+                const result = await withTimeout(
+                    client.predict("/preprocess", { image: handle_file(file) }),
+                    PREPROCESS_TIMEOUT_MS,
+                    "Background removal",
+                );
                 const processedUrl = result.data[0].url;
                 if (processedUrl) {
                     preprocessedFile = processedUrl;
@@ -1651,9 +1651,30 @@
             } catch (err) {
                 console.error("Preprocess failed:", err);
                 showToast(formatApiError(err, "Background removal failed. Continuing with the original upload."), 5200);
+            } finally {
+                isPreprocessing = false;
             }
-            isPreprocessing = false;
+        }
+
+        async function handleImageUpload(file) {
+            currentFile = file;
+            preprocessedFile = null;
+            document.getElementById('generate-btn').disabled = true;
+            await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = document.getElementById('source-preview');
+                    const hint = document.getElementById('upload-hint');
+                    img.src = e.target.result;
+                    img.style.display = 'block';
+                    hint.style.display = 'none';
+                    setStep(1);
+                    resolve();
+                };
+                reader.readAsDataURL(file);
+            });
             document.getElementById('generate-btn').disabled = false;
+            void runPreprocess(file);
         }
 
         async function refreshRuntimeStatus() {
