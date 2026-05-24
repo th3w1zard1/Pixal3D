@@ -75,7 +75,9 @@ ab_bool() {
 
 ab_text() {
   local js="$1"
-  ab eval "$js" 2>/dev/null | tr -d '\n' | sed 's/^"//;s/"$//'
+  local out=""
+  out="$(ab eval "$js" 2>/dev/null | tr -d '\n' | sed 's/^"//;s/"$//')" || true
+  printf '%s' "$out"
 }
 
 glb_ready_js="(() => {
@@ -206,7 +208,7 @@ if [[ "$hook_ok" -ne 1 ]]; then
 fi
 
 echo "==> Starting generation (max ${GENERATE_WAIT_SEC}s for GLB or error)"
-ab eval "window.__pixal3dRunGeneration(); 'started'" >/dev/null
+ab eval "window.__pixal3dRunGeneration(); 'started'" >/dev/null 2>&1 || true
 
 generation_started=0
 for ((i = 0; i < 60; i += 3)); do
