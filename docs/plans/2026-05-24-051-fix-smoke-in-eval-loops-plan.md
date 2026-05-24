@@ -1,7 +1,7 @@
 ---
 title: "fix: in-eval await loops for browser smoke"
 type: fix
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/SPACE_RECOVERY.md
 ---

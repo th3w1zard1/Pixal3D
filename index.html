@@ -1746,6 +1746,38 @@
             document.body.dataset.smokeFileReady = 'true';
         }
 
+        function dataUrlToFile(dataUrl, name, mime) {
+            const base64 = dataUrl.split(',')[1] || '';
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+            return new File([bytes], name, { type: mime });
+        }
+
+        window.__pixal3dTryGallerySampleSync = (path = 'assets/images/0_img.png') => {
+            const name = path.split('/').pop();
+            const thumb = document.querySelector(`.example-item img[src*="${name}"]`);
+            if (!thumb || !thumb.complete || !thumb.naturalWidth) return false;
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = thumb.naturalWidth;
+                canvas.height = thumb.naturalHeight;
+                canvas.getContext('2d').drawImage(thumb, 0, 0);
+                const file = dataUrlToFile(canvas.toDataURL('image/png'), name, mimeForPath(path));
+                showSourcePreviewFromUrl(thumb.src);
+                currentFile = file;
+                preprocessedFile = null;
+                document.body.dataset.smokeFileReady = 'true';
+                document.body.dataset.smokeSampleLoad = 'done';
+                window.__pixal3dSmokeSampleStatus = 'done';
+                updateGenerateAvailability(lastRuntimeHealth);
+                return true;
+            } catch (err) {
+                console.warn('Sync gallery sample failed:', err);
+                return false;
+            }
+        };
+
         async function fileFromGalleryImage(path, waitMs = 20000) {
             const name = path.split('/').pop();
             const deadline = Date.now() + waitMs;

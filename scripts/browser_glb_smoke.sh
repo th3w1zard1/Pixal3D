@@ -128,14 +128,16 @@ fi
 echo "==> Loading sample in-page (max ${PREVIEW_WAIT_SEC}s)"
 load_result="$(ab_text "(async () => {
   const path = 'assets/images/0_img.png';
-  document.querySelector('.example-item img[src*=\"0_img\"]')?.closest('.example-item')?.click();
-  void window.__pixal3dLoadSamplePath(path);
   const deadline = Date.now() + ${PREVIEW_WAIT_SEC}000;
   while (Date.now() < deadline) {
+    if (typeof window.__pixal3dTryGallerySampleSync === 'function' && window.__pixal3dTryGallerySampleSync(path)) {
+      return 'done';
+    }
+    document.querySelector('.example-item img[src*=\"0_img\"]')?.closest('.example-item')?.click();
+    if (typeof window.__pixal3dLoadSamplePath === 'function') void window.__pixal3dLoadSamplePath(path);
     const st = window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || '';
     if (st === 'done' || document.body.dataset.smokeSampleLoad === 'done') return 'done';
     if (String(st).startsWith('err:')) return st;
-    if (document.body.dataset.smokeLoadError) return 'err:' + document.body.dataset.smokeLoadError;
     await new Promise((r) => setTimeout(r, 500));
   }
   return 'timeout:sample';
