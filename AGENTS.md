@@ -1,5 +1,6 @@
 # Pixal3D Agent Notes
 
+- Hosted Space recovery checklist and verification history: [docs/SPACE_RECOVERY.md](docs/SPACE_RECOVERY.md). When validating browser and CLI in one session, run the browser default-sample flow **before** `space_smoke.py --generate` so ZeroGPU quota is not consumed by the CLI run first.
 - When a task touches Hugging Face Spaces, ZeroGPU, Gradio, `hf`, or browser-to-backend transport, look up current official docs with Context7 before changing code.
 - For this repo's hosted ZeroGPU path, preserve browser calls through `@gradio/client` unless current docs explicitly say another browser transport is supported for `Server` apps on ZeroGPU.
 - Do not add regression or unit tests for runtime or UI fixes in this repo unless the user explicitly asks for tests.
