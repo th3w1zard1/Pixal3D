@@ -1799,14 +1799,8 @@
             document.getElementById('generate-btn').disabled = true;
             let file = null;
             if (smokeTestMode) {
-                try {
-                    file = await fetchSampleFile(path, 25000);
-                } catch (err) {
-                    console.warn('Smoke sample fetch failed, trying gallery:', err);
-                }
-                if (!file) {
-                    file = await fileFromGalleryImage(path, 15000);
-                }
+                window.__pixal3dSmokeSampleStatus = 'loading-gallery';
+                file = await fileFromGalleryImage(path, 45000);
             } else {
                 try {
                     file = await fetchSampleFile(path);
@@ -1848,6 +1842,8 @@
                 previewDeadline: Date.now() + previewWaitSec * 1000,
                 generateDeadline: null,
                 generationStarted: false,
+                loadStarted: false,
+                galleryClickAttempted: false,
                 lastError: null,
             };
             window.__pixal3dSmokeSampleStatus = '';
@@ -1864,10 +1860,13 @@
 
             if (s.phase === 'idle') {
                 s.phase = 'loading';
-                void loadSampleFromPath(s.samplePath).catch((err) => {
-                    s.lastError = err?.message || String(err);
-                    s.phase = 'error';
-                });
+                if (!s.loadStarted) {
+                    s.loadStarted = true;
+                    void loadSampleFromPath(s.samplePath).catch((err) => {
+                        s.lastError = err?.message || String(err);
+                        s.phase = 'error';
+                    });
+                }
                 return setTick('loading');
             }
 
@@ -1880,12 +1879,17 @@
                     s.phase = 'sample-done';
                     return setTick('sample-done');
                 }
+                if (!s.galleryClickAttempted && Date.now() > s.previewDeadline - (s.previewWaitSec || 150) * 500) {
+                    s.galleryClickAttempted = true;
+                    const thumb = document.querySelector('.example-item img[src*="0_img"]');
+                    thumb?.closest('.example-item')?.click();
+                }
                 if (Date.now() > s.previewDeadline) {
                     s.phase = 'error';
                     s.lastError = 'sample-timeout';
                     return setTick('timeout:sample');
                 }
-                return setTick('loading');
+                return setTick(status || 'loading');
             }
 
             if (s.phase === 'sample-done') {

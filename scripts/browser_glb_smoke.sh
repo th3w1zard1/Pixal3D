@@ -126,6 +126,8 @@ if ! ab wait ".example-item" 30000 2>/dev/null; then
 fi
 
 ab eval "window.__pixal3dSmokeReset('assets/images/0_img.png', ${PREVIEW_WAIT_SEC}, ${GENERATE_WAIT_SEC})" >/dev/null 2>&1 || true
+ab click ".example-item img[src*='0_img']" 2>/dev/null || true
+sleep 2
 
 TOTAL_WAIT=$((PREVIEW_WAIT_SEC + GENERATE_WAIT_SEC + 60))
 echo "==> Smoke advance ticks (max ${TOTAL_WAIT}s, preview ${PREVIEW_WAIT_SEC}s + generate ${GENERATE_WAIT_SEC}s)"
