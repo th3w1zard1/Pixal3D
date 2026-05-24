@@ -1,185 +1,2658 @@
-#!/usr/bin/env bash
-# Browser E2E: default gallery sample -> Generate -> GLB viewer (uses agent-browser CLI).
-# Run before verify_hosted_space.sh --generate in the same session (see docs/SPACE_RECOVERY.md).
-set -euo pipefail
+<!DOCTYPE html>
+<html lang="en">
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT"
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixal3D | AI Image-to-3D</title>
 
-SPACE_URL="${PIXAL3D_SPACE_URL:-https://th3w1zard1-pixal3d.hf.space/}"
-SAMPLE_SELECTOR=".example-item img[src*='0_img']"
-PREVIEW_WAIT_SEC="${BROWSER_SMOKE_PREVIEW_WAIT_SEC:-60}"
-GENERATE_WAIT_SEC="${BROWSER_SMOKE_GENERATE_WAIT_SEC:-300}"
-HEADED=0
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.0.0/model-viewer.min.js"></script>
 
-usage() {
-  cat <<'EOF'
-Usage: scripts/browser_glb_smoke.sh [--url URL] [--headed] [--preview-wait SEC] [--generate-wait SEC]
+    <style>
+        :root {
+            --primary: #818cf8;
+            --primary-dark: #6366f1;
+            --accent: #10b981;
+            --bg: #0b0f1a;
+            --surface: #161c2d;
+            --surface-light: #222b3e;
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #f1f5f9;
+            --text-dim: #94a3b8;
+            --glass: rgba(255, 255, 255, 0.03);
+            --radius-lg: 24px;
+            --radius-md: 16px;
+            --radius-sm: 8px;
+        }
 
-Automates browser gallery -> Generate -> GLB on the hosted Space (agent-browser required).
-Exit 0 when GLB is ready (body data-smoke-glb-ready, or step 3 + export visible); 1 on viewer error;
-2 on timeout; 3 on setup failure.
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-Cold ZeroGPU runs often need 300s+ wall clock. Run before verify_hosted_space.sh --generate in one session.
-EOF
-}
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background:
+                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 100% 100%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
+        }
 
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --url)
-      SPACE_URL="${2:?missing URL}"
-      shift 2
-      ;;
-    --headed) HEADED=1; shift ;;
-    --preview-wait)
-      PREVIEW_WAIT_SEC="${2:?missing seconds}"
-      shift 2
-      ;;
-    --generate-wait)
-      GENERATE_WAIT_SEC="${2:?missing seconds}"
-      shift 2
-      ;;
-    -h|--help) usage; exit 0 ;;
-    *) echo "Unknown option: $1" >&2; usage >&2; exit 3 ;;
-  esac
-done
+        /* Top Navigation / Steps */
+        .app-shell {
+            display: flex;
+            height: 100vh;
+            width: 100vw;
+        }
 
-if ! command -v agent-browser >/dev/null 2>&1; then
-  echo "browser_glb_smoke: agent-browser not installed (see ce-setup / agent-browser docs)" >&2
-  exit 3
-fi
+        .sidebar {
+            width: 380px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 1.5rem;
+            overflow-y: auto;
+            z-index: 10;
+        }
 
-AB_OPTS=()
-if [[ "$HEADED" -eq 1 ]]; then
-  AB_OPTS+=(--headed)
-fi
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background: rgba(0, 0, 0, 0.2);
+        }
 
-ab() {
-  agent-browser "${AB_OPTS[@]}" "$@"
-}
+        header {
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            background: rgba(11, 15, 26, 0.8);
+            backdrop-filter: blur(10px);
+        }
 
-ab_bool() {
-  local js="$1"
-  local out
-  out="$(ab eval "$js" 2>/dev/null | tr -d '\n' | sed 's/^"//;s/"$//')"
-  [[ "$out" == "true" ]]
-}
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
 
-ab_text() {
-  local js="$1"
-  ab eval "$js" 2>/dev/null | tr -d '\n' | sed 's/^"//;s/"$//'
-}
+        .logo i {
+            color: var(--primary);
+            -webkit-text-fill-color: initial;
+        }
 
-glb_ready_js="(() => {
-  if (document.body?.dataset?.smokeGlbReady === 'true') return true;
-  const step3 = document.getElementById('step-3')?.classList.contains('active');
-  const extract = document.getElementById('extract-btn');
-  const extractOn = extract && (extract.style.display === 'flex' || extract.style.display === 'block');
-  const viewer = document.getElementById('main-3d-viewer');
-  const viewerOn = viewer && viewer.style.visibility !== 'hidden' && (viewer.src || '').length > 8;
-  return !!(step3 && extractOn && viewerOn);
-})()"
+        .queue-badge {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 20px;
+            padding: 5px 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #a5b4fc;
+            -webkit-text-fill-color: initial;
+            margin-left: auto;
+            white-space: nowrap;
+            transition: all 0.3s ease;
+        }
 
-cleanup() {
-  ab close 2>/dev/null || true
-}
-trap cleanup EXIT
+        .queue-badge.busy {
+            background: rgba(251, 146, 60, 0.2);
+            border-color: rgba(251, 146, 60, 0.5);
+            color: #fb923c;
+            animation: badge-pulse 2s infinite;
+        }
 
-echo "==> Browser GLB smoke: ${SPACE_URL}"
-ab open "$SPACE_URL"
-sleep 6
+        @keyframes badge-pulse {
 
-if ! ab wait ".example-item" 30000 2>/dev/null; then
-  echo "browser_glb_smoke: gallery did not load (.example-item timeout)" >&2
-  exit 3
-fi
+            0%,
+            100% {
+                opacity: 1;
+            }
 
-if ! ab click "$SAMPLE_SELECTOR" 2>/dev/null; then
-  echo "browser_glb_smoke: could not click gallery sample (selector: ${SAMPLE_SELECTOR})" >&2
-  exit 3
-fi
+            50% {
+                opacity: 0.7;
+            }
+        }
 
-echo "==> Waiting for upload preview (max ${PREVIEW_WAIT_SEC}s)"
-preview_ok=0
-for ((i = 0; i < PREVIEW_WAIT_SEC; i += 2)); do
-  if ab_bool "document.body?.dataset?.smokeFileReady === 'true' || !!document.getElementById('source-preview')?.src"; then
-    preview_ok=1
-    break
-  fi
-  sleep 2
-done
+        .queue-badge i {
+            color: inherit;
+        }
 
-if [[ "$preview_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: source preview / file-ready marker never appeared" >&2
-  exit 2
-fi
+        .steps-nav {
+            display: flex;
+            gap: 2rem;
+        }
 
-sleep 5
+        .step-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            transition: all 0.3s;
+            cursor: pointer;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
 
-echo "==> Waiting for Generate to unlock (max 90s)"
-gen_ready=0
-for ((i = 0; i < 90; i += 3)); do
-  if ab_bool "!document.getElementById('generate-btn')?.disabled"; then
-    gen_ready=1
-    break
-  fi
-  sleep 3
-done
+        .step-item.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
 
-if [[ "$gen_ready" -ne 1 ]]; then
-  echo "browser_glb_smoke: Generate stayed disabled (runtime may still be warming)" >&2
-  echo "browser_glb_smoke: forcing programmatic click; if this fails, sign in for higher quota" >&2
-fi
+        .step-item.completed {
+            color: var(--accent);
+        }
 
-echo "==> Starting generation (max ${GENERATE_WAIT_SEC}s for GLB or error)"
-if ! ab_bool "!!document.getElementById('generate-btn')"; then
-  echo "browser_glb_smoke: generate button missing from DOM" >&2
-  exit 2
-fi
-ab eval "document.getElementById('generate-btn').click(); 'started'" >/dev/null
+        /* Workspace Panels */
+        .workspace {
+            flex: 1;
+            padding: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
 
-generation_started=0
-for ((i = 0; i < 45; i += 3)); do
-  if ab_bool "document.getElementById('loading-overlay')?.style?.display === 'flex'"; then
-    generation_started=1
-    break
-  fi
-  if ab_bool "$glb_ready_js"; then
-    generation_started=1
-    break
-  fi
-  sleep 3
-done
+        .panel {
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.4s ease-out;
+            position: relative;
+        }
 
-if [[ "$generation_started" -ne 1 ]]; then
-  echo "browser_glb_smoke: Generate did not start (no loading overlay within 45s)" >&2
-  err_hint="$(ab_text "document.getElementById('viewer-error-message')?.textContent?.trim() || ''")"
-  [[ -n "$err_hint" ]] && echo "browser_glb_smoke: viewer message: ${err_hint}" >&2
-  exit 2
-fi
+        .panel.active {
+            display: flex;
+        }
 
-for ((i = 0; i < GENERATE_WAIT_SEC; i += 5)); do
-  if ab_bool "document.getElementById('viewer-error')?.classList.contains('show')"; then
-    err_msg="$(ab_text "document.getElementById('viewer-error-message')?.textContent?.trim() || ''")"
-    echo "browser_glb_smoke: viewer error: ${err_msg}" >&2
-    exit 1
-  fi
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
 
-  if ab_bool "$glb_ready_js"; then
-    src="$(ab_text "document.getElementById('main-3d-viewer')?.src || ''")"
-    marker="$(ab_text "document.body?.dataset?.smokeGlbReady || ''")"
-    echo "OK: GLB ready in browser"
-    [[ -n "$marker" ]] && echo "marker: data-smoke-glb-ready=${marker}"
-    [[ -n "$src" ]] && echo "src: $src"
-    exit 0
-  fi
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
 
-  sleep 5
-done
+        /* Upload Zone */
+        .upload-card {
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 4/3;
+            background: var(--surface-light);
+            border: 2px dashed var(--border);
+            border-radius: var(--radius-lg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
 
-if ab_bool "document.getElementById('loading-overlay')?.style?.display === 'flex'"; then
-  echo "browser_glb_smoke: generation still running (try --generate-wait 360 or fresh ZeroGPU quota)" >&2
-else
-  echo "browser_glb_smoke: timed out after ${GENERATE_WAIT_SEC}s with no GLB ready signal" >&2
-fi
-exit 2
+        .upload-card:hover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .upload-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none;
+        }
+
+        .upload-hint {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            color: var(--text-dim);
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .upload-hint i {
+            width: 48px;
+            height: 48px;
+            color: var(--primary);
+        }
+
+        /* Result Viewers */
+        .viewer-wrapper {
+            width: 100%;
+            height: 100%;
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            background: #000;
+            position: relative;
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);
+        }
+
+        .viewer-error {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            padding: 2rem 2.5rem;
+            background: linear-gradient(135deg, rgba(11, 15, 26, 0.96), rgba(24, 12, 28, 0.96));
+            color: var(--text);
+            text-align: center;
+            z-index: 5;
+            overflow: auto;
+        }
+
+        .viewer-error.show {
+            display: flex;
+        }
+
+        .viewer-error h3 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #ffb4b4;
+            margin: 0;
+            letter-spacing: 0.01em;
+        }
+
+        .viewer-error p {
+            margin: 0;
+            max-width: 60ch;
+            font-size: 0.9rem;
+            line-height: 1.55;
+            color: var(--text-dim, #cbd5e1);
+            white-space: pre-wrap;
+        }
+
+        .viewer-error code {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 0.1em 0.4em;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        .viewer-error .viewer-error-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .viewer-error button {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: var(--text);
+            padding: 0.5rem 0.9rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+
+        .viewer-error button:hover {
+            background: rgba(255, 255, 255, 0.14);
+        }
+
+        .viewer-error-signin {
+            display: inline-block;
+            padding: 0.5rem 0.9rem;
+            border-radius: 8px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .viewer-error-signin:hover {
+            filter: brightness(1.08);
+        }
+
+        .viewer-error-signin[hidden] {
+            display: none;
+        }
+
+        #frame-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .preview-frame {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none;
+        }
+
+        .preview-frame.active {
+            display: block;
+        }
+
+        .viewer-overlay {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(11, 15, 26, 0.6);
+            backdrop-filter: blur(12px);
+            padding: 1rem 2rem;
+            border-radius: 100px;
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            width: 80%;
+            max-width: 600px;
+        }
+
+        /* Model Viewer Customization */
+        model-viewer {
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 50% 50%, #1a2235 0%, #0b0f1a 100%);
+        }
+
+        /* Sidebar Controls */
+        .sidebar-section {
+            margin-bottom: 2rem;
+        }
+
+        .sidebar-section h3 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .input-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .input-wrapper label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #cbd5e1;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .input-wrapper label span {
+            color: var(--primary);
+            font-family: monospace;
+        }
+
+        select,
+        input[type="number"] {
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            color: white;
+            padding: 0.75rem;
+            border-radius: var(--radius-sm);
+            width: 100%;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        select:focus {
+            border-color: var(--primary);
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            height: 4px;
+            background: var(--border);
+            border-radius: 2px;
+            margin: 10px 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--primary);
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid var(--surface);
+            box-shadow: 0 0 10px rgba(129, 140, 248, 0.4);
+        }
+
+        /* Action Buttons */
+        .btn-stack {
+            margin-top: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            font-weight: 700;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.2);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            background: #334155;
+            color: #64748b;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .btn-outline:hover {
+            background: var(--border);
+        }
+
+        /* Mode Buttons */
+        .mode-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+        }
+
+        .mode-tab {
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            border-radius: var(--radius-sm);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-dim);
+        }
+
+        .mode-tab.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        /* Examples Footer */
+        .examples-drawer {
+            padding: 1.5rem 2rem;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .examples-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .examples-grid {
+            display: flex;
+            flex-wrap: nowrap;
+            gap: 1rem;
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding-bottom: 1rem;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .examples-grid::-webkit-scrollbar {
+            display: none;
+        }
+
+        .examples-track {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .example-item {
+            flex: 0 0 140px;
+            min-width: 140px;
+            aspect-ratio: 1/1;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .example-item:hover {
+            transform: translateY(-4px);
+            border-color: var(--primary);
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.25);
+        }
+
+        /* Gallery Slider */
+        .gallery-slider-wrap {
+            margin-top: 0.75rem;
+            padding: 0 0.25rem;
+        }
+
+        .gallery-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .gallery-slider:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .gallery-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 50%;
+            cursor: grab;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .gallery-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 4px 16px rgba(99, 102, 241, 0.6);
+        }
+
+        .gallery-slider::-webkit-slider-thumb:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+
+        .gallery-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 50%;
+            border: none;
+            cursor: grab;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.4);
+        }
+
+        .example-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Loading & Status */
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(11, 15, 26, 0.9);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            backdrop-filter: blur(8px);
+        }
+
+        .loader-ring {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 4px solid var(--border);
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .status-toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--surface-light);
+            padding: 1rem 1.5rem;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--primary);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            display: none;
+            z-index: 2000;
+            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+            }
+
+            to {
+                transform: translateX(0);
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-dim);
+        }
+
+        /* Reference thumbnail in preview/result panels */
+        .ref-thumbnail {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            width: 400px;
+            height: 400px;
+            object-fit: cover;
+            border-radius: var(--radius-sm);
+            border: 2px solid var(--border);
+            z-index: 20;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .ref-thumbnail:hover {
+            transform: scale(1.1);
+        }
+
+        /* Lightbox */
+        .lightbox-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 3000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            cursor: zoom-out;
+            backdrop-filter: blur(6px);
+        }
+
+        .lightbox-overlay img {
+            max-width: 80%;
+            max-height: 80%;
+            border-radius: var(--radius-md);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        }
+
+        /* Tooltip System */
+        .tooltip-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            margin-left: 0.4rem;
+            background: rgba(129, 140, 248, 0.2);
+            border: 1px solid rgba(129, 140, 248, 0.4);
+            border-radius: 50%;
+            cursor: help;
+            color: var(--primary);
+            font-size: 0.7rem;
+            font-weight: bold;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .tooltip-icon:hover {
+            background: rgba(129, 140, 248, 0.3);
+            border-color: rgba(129, 140, 248, 0.6);
+        }
+
+        .tooltip-content {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 12px);
+            right: -180px;
+            width: 280px;
+            background: linear-gradient(135deg, rgba(16, 25, 50, 0.98), rgba(11, 15, 26, 0.95));
+            border: 1px solid rgba(129, 140, 248, 0.3);
+            border-radius: var(--radius-sm);
+            padding: 0.9rem;
+            font-size: 0.75rem;
+            line-height: 1.6;
+            color: var(--text-dim);
+            z-index: 2001;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+            pointer-events: auto;
+            backdrop-filter: blur(8px);
+        }
+
+        .tooltip-content::before {
+            content: '';
+            position: absolute;
+            top: 100%;
+            right: 20px;
+            width: 8px;
+            height: 8px;
+            background: rgba(16, 25, 50, 0.98);
+            border: 1px solid rgba(129, 140, 248, 0.3);
+            border-right: none;
+            border-bottom: none;
+            transform: rotate(-45deg);
+        }
+
+        .tooltip-icon:hover .tooltip-content {
+            display: block;
+        }
+
+        .tooltip-content strong {
+            color: var(--primary);
+            display: block;
+            margin-bottom: 0.4rem;
+        }
+
+        .tooltip-content .note {
+            margin-top: 0.6rem;
+            padding-top: 0.6rem;
+            border-top: 1px solid rgba(129, 140, 248, 0.2);
+            color: var(--accent);
+        }
+
+        .runtime-card {
+            background: linear-gradient(180deg, rgba(129, 140, 248, 0.12), rgba(15, 23, 42, 0.35));
+            border: 1px solid rgba(129, 140, 248, 0.22);
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .runtime-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .runtime-card-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .runtime-badge {
+            border-radius: 999px;
+            padding: 0.25rem 0.6rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            border: 1px solid transparent;
+        }
+
+        .runtime-badge[data-state="pending"] {
+            background: rgba(148, 163, 184, 0.12);
+            color: #cbd5e1;
+            border-color: rgba(148, 163, 184, 0.2);
+        }
+
+        .runtime-badge[data-state="initializing"] {
+            background: rgba(129, 140, 248, 0.12);
+            color: #c7d2fe;
+            border-color: rgba(129, 140, 248, 0.35);
+        }
+
+        .runtime-badge[data-state="ready"] {
+            background: rgba(16, 185, 129, 0.12);
+            color: #a7f3d0;
+            border-color: rgba(16, 185, 129, 0.35);
+        }
+
+        .runtime-badge[data-state="error"] {
+            background: rgba(248, 113, 113, 0.12);
+            color: #fecaca;
+            border-color: rgba(248, 113, 113, 0.35);
+        }
+
+        .runtime-badge[data-state="cpu-standby"] {
+            background: rgba(251, 191, 36, 0.12);
+            color: #fde68a;
+            border-color: rgba(251, 191, 36, 0.35);
+        }
+
+        .runtime-card p {
+            font-size: 0.76rem;
+            color: var(--text-dim);
+            line-height: 1.55;
+        }
+
+        .runtime-budget-hint {
+            margin-top: 0.35rem;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            opacity: 0.9;
+        }
+
+        .runtime-budget-hint[hidden] {
+            display: none;
+        }
+
+        .runtime-signin-link {
+            display: inline-block;
+            margin-top: 0.45rem;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #a5b4fc;
+            text-decoration: none;
+        }
+
+        .runtime-signin-link:hover {
+            color: #c7d2fe;
+            text-decoration: underline;
+        }
+
+        .runtime-signin-link[hidden] {
+            display: none;
+        }
+
+        .btn-glow {
+            border-color: rgba(16, 185, 129, 0.45);
+            color: #d1fae5;
+            box-shadow: 0 0 0 rgba(16, 185, 129, 0.35);
+            animation: glowPulse 2.2s ease-in-out infinite;
+        }
+
+        @keyframes glowPulse {
+            0%, 100% {
+                box-shadow: 0 0 0 rgba(16, 185, 129, 0.12), 0 0 0 rgba(16, 185, 129, 0);
+            }
+            50% {
+                box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.18), 0 0 24px rgba(16, 185, 129, 0.2);
+            }
+        }
+
+        .helper-copy {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            line-height: 1.5;
+        }
+    </style>
+</head>
+
+<body data-smoke-default-sample="assets/images/0_img.png">
+
+    <div class="app-shell">
+        <!-- Left Sidebar: Controls -->
+        <div class="sidebar">
+            <div class="logo" style="margin-bottom: 2.5rem;">
+                <i data-lucide="sparkles"></i>
+                <span>Pixal3D</span>
+                <div id="queue-badge" class="queue-badge" title="Current queue size">
+                    <i data-lucide="users" style="width: 13px; height: 13px;"></i>
+                    <span>Queue: <span id="queue-count">0</span></span>
+                </div>
+            </div>
+
+            <div class="sidebar-section" style="margin-bottom: 1.5rem;">
+                <p style="font-size: 0.82rem; color: var(--text-dim); line-height: 1.6;">
+                    1. Upload an image and click Generate.<br>
+                    2. Review the preview when rendered views are available.<br>
+                    3. Extract or download the generated GLB file.
+                </p>
+                <p
+                    style="font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; margin-top: 0.5rem; opacity: 0.7;">
+                    Note: FOV is auto-estimated via MoGe-2.<br>
+                    If distortion occurs, try manual FOV.<br>
+                    Default <b style="color: var(--primary);">0.2 rad</b> generally works well.
+                </p>
+                <a href="https://ldyang694.github.io/projects/pixal3d/" target="_blank" class="btn btn-outline"
+                    style="margin-top: 1rem; padding: 0.6rem 1rem; font-size: 0.85rem;">
+                    <i data-lucide="globe" style="width: 16px;"></i>
+                    Project Page
+                </a>
+                <div class="runtime-card">
+                    <div class="runtime-card-header">
+                        <span class="runtime-card-title">Runtime Status</span>
+                        <span class="runtime-badge" id="runtime-status-badge" data-state="pending">Cold</span>
+                    </div>
+                    <p id="runtime-status-text">The hosted runtime is cold. Generate will prime the model stack automatically.</p>
+                    <p id="runtime-budget-hint" class="runtime-budget-hint" hidden></p>
+                    <a id="runtime-signin-link" class="runtime-signin-link" href="https://huggingface.co/login" target="_blank" rel="noopener noreferrer" hidden>Sign in on Hugging Face for higher ZeroGPU quota</a>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3 style="display: flex; align-items: center;"><i data-lucide="sliders-horizontal"
+                        style="width: 14px;"></i> Base Settings</h3>
+                <div class="control-group">
+                    <div class="input-wrapper">
+                        <label>
+                            Target Resolution
+                            <span class="tooltip-icon">?
+                                <div class="tooltip-content">
+                                    <strong>Shape Generation Resolution</strong>
+                                    Controls the latent grid resolution used by the diffusion model during 3D shape
+                                    generation.
+                                    <div class="note">
+                                        <b>1024:</b> Hosted ZeroGPU default<br>
+                                        <b>1536:</b> Higher quality for larger paid GPUs; ZeroGPU normalizes to 1024
+                                    </div>
+                                </div>
+                            </span>
+                        </label>
+                        <select id="resolution">
+                            <option value="512">512 (Fast / ZeroGPU)</option>
+                            <option value="1024" selected>1024 (Balanced)</option>
+                            <option value="1536">1536 (High Quality / Paid GPU)</option>
+                        </select>
+                    </div>
+                    <div class="input-wrapper">
+                        <label>
+                            Generation Seed
+                            <span class="tooltip-icon">?
+                                <div class="tooltip-content">
+                                    <strong>Random Seed (0-999999)</strong>
+                                    Controls reproducibility. Same seed + same parameters = identical output.
+                                    <div class="note">
+                                        <b>Use case:</b> Fix a seed to refine specific generations<br>
+                                        <b>Randomize:</b> Click ↻ button for unique results
+                                    </div>
+                                </div>
+                            </span>
+                            <span style="font-size: 0.75rem; font-weight: 400;">#<span
+                                    id="seed-display">42</span></span>
+                        </label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="number" id="seed" value="42" style="flex: 1;">
+                            <button class="btn btn-outline" style="width: 50px; padding: 0;" onclick="randomizeSeed()">
+                                <i data-lucide="rotate-cw" style="width: 16px;"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="input-wrapper">
+                        <label style="display: flex; align-items: flex-start; gap: 0.4rem;">
+                            Camera FOV
+                            <span class="tooltip-icon" style="margin-top: 2px;">?
+                                <div class="tooltip-content">
+                                    <strong>Field of View (Auto-detected)</strong>
+                                    Controls the camera lens angle. Auto-estimation uses MoGe-2 depth model.
+                                    <div class="note">
+                                        <b>Wide FOV (0.02 rad):</b> Zoomed-out view<br>
+                                        <b>Narrow FOV (0.5 rad):</b> Close-up view<br>
+                                        <b>Tip:</b> If geometry distorts, manually adjust ±0.05 rad
+                                    </div>
+                                </div>
+                            </span>
+                            <span style="display: flex; align-items: center; gap: 0.35rem;">
+                                <input type="checkbox" id="fov-auto" checked
+                                    style="accent-color: var(--primary); width: 14px; height: 14px; cursor: pointer;">
+                                <span style="font-size: 0.72rem; color: var(--text-dim); cursor: pointer;"
+                                    onclick="document.getElementById('fov-auto').click()">Auto</span>
+                            </span>
+                        </label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="number" id="manual-fov" value="0.2" min="0.0175" max="2.9671" step="0.01"
+                                disabled style="opacity: 0.4; flex: 1;">
+                            <select id="fov-unit" disabled style="opacity: 0.4; width: 70px; padding: 0.5rem;">
+                                <option value="deg">deg</option>
+                                <option value="rad" selected>rad</option>
+                            </select>
+                        </div>
+                        <p id="fov-hint" style="font-size: 0.65rem; color: var(--text-dim); margin-top: 0.15rem;">
+                            Manual FOV in radians (0.02–2.97 rad)
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="render-controls" style="display: none;">
+                <h3><i data-lucide="palette" style="width: 14px;"></i> Render Mode For Preview</h3>
+                <div class="mode-grid" id="mode-grid">
+                    <!-- Tabs injected via JS -->
+                </div>
+            </div>
+
+            <div class="sidebar-section" id="export-controls" style="display: none;">
+                <h3><i data-lucide="package-check" style="width: 14px;"></i> Export Profile</h3>
+                <div class="control-group">
+                    <div class="input-wrapper">
+                        <label>GLB Texture Budget</label>
+                        <select id="export-profile">
+                            <option value="fast" selected>Fast Preview GLB (1K)</option>
+                            <option value="balanced">Balanced GLB (2K)</option>
+                            <option value="detail">High Detail GLB (4K)</option>
+                        </select>
+                        <p class="helper-copy" id="export-profile-hint">
+                            Fastest export and lowest quota cost. Best for proofing or quick handoff on ZeroGPU.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; cursor: pointer;"
+                    onclick="toggleAdvanced()">
+                    <h3 style="margin-bottom: 0; display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="shield-alert" style="width: 14px;"></i>
+                        Advanced Engine
+                        <span class="tooltip-icon" style="margin: 0;" onclick="event.stopPropagation()">?
+                            <div class="tooltip-content" style="right: 0;">
+                                <strong>Diffusion Model Parameters</strong>
+                                Fine-tune the generative quality. Based on Pixal3D's flow-matching diffusion pipeline.
+                                <div class="note">
+                                    <b>Guidance Strength:</b> How closely to follow input<br>
+                                    <b>Sampling Steps:</b> Quality vs speed trade-off<br>
+                                    <b>Production baseline:</b> Guidance=12.0, Steps=50
+                                </div>
+                            </div>
+                        </span>
+                    </h3>
+                    <i data-lucide="chevron-down" id="adv-chevron" style="width: 16px; transition: transform 0.3s;"></i>
+                </div>
+                <div id="advanced-settings"
+                    style="display: none; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <div class="control-group">
+                        <div class="input-wrapper">
+                            <label style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>SS Guidance
+                                    <span class="tooltip-icon" style="margin-left: 0.3rem;">?
+                                        <div class="tooltip-content">
+                                            <strong>Sparse Structure Guidance Strength</strong>
+                                            Controls how strictly the model follows semantic structure guidance from
+                                            input.
+                                            <div class="note">
+                                                <b>Lower (1-5):</b> More creative, loose structure<br>
+                                                <b>Higher (8-10):</b> Faithful to input semantics<br>
+                                                <b>Default 7.5:</b> Balanced compromise<br>
+                                                <b>Increase if:</b> Structure looks wrong<br>
+                                                <b>Decrease if:</b> Want more creative interpretation
+                                            </div>
+                                        </div>
+                                    </span>
+                                </span>
+                                <span><span id="ss_gs_val">7.5</span></span>
+                            </label>
+                            <input type="range" id="ss_gs" min="1" max="10" step="0.1" value="7.5"
+                                oninput="updateVal('ss_gs')">
+                        </div>
+                        <div class="input-wrapper">
+                            <label style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>SS Sampling Steps
+                                    <span class="tooltip-icon" style="margin-left: 0.3rem;">?
+                                        <div class="tooltip-content">
+                                            <strong>Sparse Structure Denoising Iterations</strong>
+                                            Number of diffusion steps for shape skeleton generation. More steps = better
+                                            detail but slower.
+                                            <div class="note">
+                                                <b>1-5:</b> Hosted ZeroGPU-safe range<br>
+                                                <b>6-12:</b> Larger GPU range<br>
+                                                <b>Typical:</b> 5 steps on ZeroGPU
+                                            </div>
+                                        </div>
+                                    </span>
+                                </span>
+                                <span><span id="ss_steps_val">5</span></span>
+                            </label>
+                            <input type="range" id="ss_steps" min="1" max="50" step="1" value="5"
+                                oninput="updateVal('ss_steps')">
+                        </div>
+                        <div class="input-wrapper">
+                            <label style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Shape Guidance
+                                    <span class="tooltip-icon" style="margin-left: 0.3rem;">?
+                                        <div class="tooltip-content">
+                                            <strong>Shape Latent Guidance Strength</strong>
+                                            Controls adherence during dense shape (SDF) generation phase. Higher = more
+                                            faithful to input image semantics.
+                                            <div class="note">
+                                                <b>Recommended:</b> 7.5 (default)<br>
+                                                <b>Increase to 8-10:</b> More subject-faithful shapes<br>
+                                                <b>Decrease to 5-7:</b> More creative variations<br>
+                                                <b>Works with:</b> SS Guidance for coherent generation
+                                            </div>
+                                        </div>
+                                    </span>
+                                </span>
+                                <span><span id="shape_gs_val">7.5</span></span>
+                            </label>
+                            <input type="range" id="shape_gs" min="1" max="10" step="0.1" value="7.5"
+                                oninput="updateVal('shape_gs')">
+                        </div>
+                        <div class="input-wrapper">
+                            <label style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Shape Sampling Steps
+                                    <span class="tooltip-icon" style="margin-left: 0.3rem;">?
+                                        <div class="tooltip-content">
+                                            <strong>Shape Latent Denoising Iterations</strong>
+                                            Diffusion steps for detailed SDF (shape) generation. More steps improve detail
+                                            but reduce speed.
+                                            <div class="note">
+                                                <b>1-5:</b> Hosted ZeroGPU-safe range<br>
+                                                <b>6-12:</b> Larger GPU range<br>
+                                                <b>Typical:</b> 5 steps on ZeroGPU
+                                            </div>
+                                        </div>
+                                    </span>
+                                </span>
+                                <span><span id="shape_steps_val">5</span></span>
+                            </label>
+                            <input type="range" id="shape_steps" min="1" max="40" step="1" value="5"
+                                oninput="updateVal('shape_steps')">
+                        </div>
+                        <div class="input-wrapper">
+                            <label
+                                style="font-size: 0.72rem; color: var(--text-dim); margin-bottom: 0.5rem; display: flex; gap: 0.3rem;">
+                                <input type="checkbox" id="show-texture-controls"
+                                    style="accent-color: var(--primary); width: 14px; height: 14px; cursor: pointer;">
+                                <span style="cursor: pointer;"
+                                    onclick="document.getElementById('show-texture-controls').click()">Advanced Texture
+                                    Tuning</span>
+                            </label>
+                        </div>
+                        <div id="texture-controls"
+                            style="display: none; padding-top: 0.75rem; border-top: 1px solid var(--border);">
+                            <div class="control-group">
+                                <div class="input-wrapper">
+                                    <label style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span>Texture Guidance
+                                            <span class="tooltip-icon" style="margin-left: 0.3rem;">?
+                                                <div class="tooltip-content">
+                                                    <strong>Texture Latent Guidance Strength</strong>
+                                                    Controls PBR material/color generation. Lower values allow more creative
+                                                    material interpretation.
+                                                    <div class="note">
+                                                        <b>Default 1.0:</b> Balanced colors<br>
+                                                        <b>0.0-0.5:</b> Creative textures<br>
+                                                        <b>1.0-2.0:</b> Faithful colors<br>
+                                                        <b>Rarely used:</b> Most changes in other params
+                                                    </div>
+                                                </div>
+                                            </span>
+                                        </span>
+                                        <span><span id="tex_gs_val">1.0</span></span>
+                                    </label>
+                                    <input type="range" id="tex_gs" min="0" max="5" step="0.1" value="1.0"
+                                        oninput="updateVal('tex_gs')">
+                                </div>
+                                <div class="input-wrapper">
+                                    <label style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span>Texture Sampling Steps
+                                            <span class="tooltip-icon" style="margin-left: 0.3rem;">?
+                                                <div class="tooltip-content">
+                                                    <strong>Texture Denoising Iterations</strong>
+                                                    Steps for material/PBR texture generation. Higher = more refined colors
+                                                    and materials.
+                                                    <div class="note">
+                                                        <b>1-5:</b> Hosted ZeroGPU-safe range<br>
+                                                        <b>6-12:</b> Larger GPU range<br>
+                                                        <b>Typical:</b> 5 steps on ZeroGPU
+                                                    </div>
+                                                </div>
+                                            </span>
+                                        </span>
+                                        <span><span id="tex_steps_val">5</span></span>
+                                    </label>
+                                    <input type="range" id="tex_steps" min="1" max="40" step="1" value="5"
+                                        oninput="updateVal('tex_steps')">
+                                </div>
+                            </div>
+                        </div>
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 0.5rem 0;">
+                        <div class="input-wrapper">
+                            <label style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Decimation (Mesh Vertices)
+                                    <span class="tooltip-icon" style="margin-left: 0.3rem;">?
+                                        <div class="tooltip-content">
+                                            <strong>Maximum Triangle Count (Post-processing)</strong>
+                                            Reduces mesh complexity using Quadric Error Metrics (QEM) algorithm.
+                                            Improves file size and rendering performance.
+                                            <div class="note">
+                                                <b>100K (10%):</b> Ultra-low detail, mobile only<br>
+                                                <b>500K (50%):</b> Hosted ZeroGPU default<br>
+                                                <b>1M (100%):</b> Larger GPU export path<br>
+                                                <b>Increase:</b> If model looks boxy/low-poly<br>
+                                                <b>Decrease:</b> If file too large or rendering slow<br>
+                                                <b>File size:</b> Roughly 100K triangles = 200-400KB GLTF
+                                            </div>
+                                        </div>
+                                    </span>
+                                </span>
+                                <span><span id="decim_val">0.5M</span></span>
+                            </label>
+                            <input type="range" id="decimation" min="100000" max="1000000" step="10000" value="500000"
+                                oninput="updateVal('decimation')">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="btn-stack">
+                <button class="btn btn-primary" id="generate-btn" disabled>
+                    <i data-lucide="zap"></i>
+                    Start Generation
+                </button>
+                <button class="btn btn-outline btn-glow" id="extract-btn" style="display: none;">
+                    <i data-lucide="box"></i>
+                    Export GLB
+                </button>
+                <button class="btn btn-outline" id="download-btn"
+                    style="display: none; background: rgba(16, 185, 129, 0.1); border-color: var(--accent); color: var(--accent);">
+                    <i data-lucide="download"></i>
+                    Download Asset
+                </button>
+            </div>
+        </div>
+
+        <!-- Right: Main Area -->
+        <div class="main-content">
+            <header>
+                <div class="steps-nav">
+                    <div class="step-item active" id="step-1">
+                        <i data-lucide="image"></i>
+                        <span>1. SOURCE</span>
+                    </div>
+                    <div class="step-item" id="step-2">
+                        <i data-lucide="view"></i>
+                        <span>2. PREVIEW</span>
+                    </div>
+                    <div class="step-item" id="step-3">
+                        <i data-lucide="box"></i>
+                        <span>3. RESULT</span>
+                    </div>
+                </div>
+                <button class="btn btn-outline" id="clear-btn" title="Clear all & restart"
+                    style="width: 34px; height: 34px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center; border-color: rgba(248,113,113,0.3);">
+                    <i data-lucide="trash-2" style="width: 16px; height: 16px; color: #f87171;"></i>
+                </button>
+            </header>
+
+            <div class="workspace">
+                <!-- Panel 1: Upload -->
+                <div class="panel active" id="panel-1">
+                    <div class="upload-card" id="drop-zone" onclick="document.getElementById('file-input').click()">
+                        <input type="file" id="file-input" hidden accept="image/*">
+                        <div class="upload-hint" id="upload-hint">
+                            <i data-lucide="cloud-upload"></i>
+                            <h2 style="font-family: 'Outfit'; margin-top: 1rem;">Upload Reference</h2>
+                            <p>Drag and drop any image, or click to browse</p>
+                        </div>
+                        <img id="source-preview" src="" alt="Source">
+                    </div>
+                </div>
+
+                <!-- Panel 2: Multi-frame Preview -->
+                <div class="panel" id="panel-2">
+                    <img id="ref-thumb-2" class="ref-thumbnail" src="" alt="Reference">
+                    <div class="viewer-wrapper">
+                        <div id="frame-container">
+                            <!-- Injected via JS -->
+                        </div>
+                        <div class="viewer-overlay">
+                            <i data-lucide="move-horizontal" style="color: var(--primary); width: 20px;"></i>
+                            <input type="range" id="angle-slider" min="0" max="7" value="0" step="1" style="flex: 1;">
+                            <div
+                                style="font-family: monospace; font-weight: 700; color: var(--primary); font-size: 0.8rem;">
+                                VIEW_ANGLE: <span id="angle-display">00</span>°
+                            </div>
+                            <div id="camera-info"
+                                style="font-family: monospace; font-size: 0.75rem; color: var(--text-dim); display: none; border-left: 1px solid var(--border); padding-left: 1rem;">
+                                <span>FOV: <span id="fov-display" style="color: var(--accent);">--</span> rad</span>
+                                <span style="margin-left: 0.75rem;">Dist: <span id="dist-display"
+                                        style="color: var(--accent);">--</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel 3: 3D Result -->
+                <div class="panel" id="panel-3">
+                    <img id="ref-thumb-3" class="ref-thumbnail" src="" alt="Reference">
+                    <div class="viewer-wrapper">
+                        <model-viewer id="main-3d-viewer" camera-controls auto-rotate camera-orbit="-180deg 90deg auto"
+                            shadow-intensity="1.5" environment-image="neutral" exposure="1.2">
+                            <div slot="progress-bar" style="background: var(--primary); height: 4px;"></div>
+                        </model-viewer>
+                        <div class="viewer-error" id="viewer-error" role="alert" aria-live="assertive">
+                            <h3 id="viewer-error-title">Generation could not complete</h3>
+                            <p id="viewer-error-message"></p>
+                            <div class="viewer-error-actions">
+                                <a id="viewer-error-signin" class="viewer-error-signin" href="https://huggingface.co/login" target="_blank" rel="noopener noreferrer" hidden>Sign in on Hugging Face</a>
+                                <button type="button" id="viewer-error-copy">Copy details</button>
+                                <button type="button" id="viewer-error-dismiss">Dismiss</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer: Examples -->
+            <div class="examples-drawer">
+                <div class="examples-header">
+                    <h4
+                        style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em;">
+                        Sample Gallery</h4>
+                </div>
+                <div class="examples-grid" id="examples-grid">
+                    <!-- Injected via JS -->
+                </div>
+                <div class="gallery-slider-wrap">
+                    <input type="range" id="gallery-slider" class="gallery-slider" min="0" max="100" value="0">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loader-ring"></div>
+        <div style="text-align: center; width: 100%; max-width: 500px; padding: 0 2rem;">
+            <!-- Progress stages -->
+            <div id="progress-stages" style="display: none; text-align: left;">
+                <div class="progress-stage" id="progress-stage-item" style="margin-bottom: 1rem;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <span id="progress-stage-name"
+                            style="font-size: 0.85rem; font-weight: 600; color: var(--primary);">Initializing...</span>
+                        <span id="progress-step-text"
+                            style="font-size: 0.75rem; color: var(--text-dim); font-family: monospace;">0/0</span>
+                    </div>
+                    <div
+                        style="width: 100%; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;">
+                        <div id="progress-bar-fill"
+                            style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary), var(--accent)); border-radius: 3px; transition: width 0.3s ease;">
+                        </div>
+                    </div>
+                </div>
+                <!-- Stage history log -->
+                <div id="progress-log"
+                    style="font-size: 0.75rem; color: var(--text-dim); line-height: 1.8; max-height: 180px; overflow-y: auto; margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid var(--border);">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="lightbox-overlay" id="lightbox-overlay" onclick="closeLightbox()">
+        <img id="lightbox-img" src="" alt="Enlarged">
+    </div>
+
+    <div class="status-toast" id="toast">Generation started!</div>
+
+    <script type="module">
+        import { Client, handle_file } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
+
+        let client;
+        let currentFile = null;
+        let preprocessedFile = null;
+        let isPreprocessing = false;
+        let generationResult = null;
+        let currentMode = "shaded_forest";
+        let currentFrame = 0;
+        const sessionId = crypto.randomUUID();
+        let currentStep = 1;
+        let runtimePrimed = false;
+        let lastRuntimeHealth = null;
+        let lastRuntimeReady = false;
+        let lastObservedRuntimeMode = null;
+        let runtimeStatusInterval = null;
+        const RUNTIME_POLL_MS_DEFAULT = 15000;
+        const RUNTIME_POLL_MS_FAST = 5000;
+
+        const MODES = [
+            { name: "Normal", key: "normal" },
+            { name: "Clay", key: "clay" },
+            { name: "Color", key: "base_color" },
+            { name: "Forest", key: "shaded_forest" },
+            { name: "Sunset", key: "shaded_sunset" },
+            { name: "Blue", key: "shaded_courtyard" }
+        ];
+        const EXPORT_PROFILES = {
+            fast: {
+                label: "Fast Preview GLB",
+                textureSize: 512,
+                hint: "Fastest export and lowest quota cost. Best for proofing or quick handoff on ZeroGPU."
+            },
+            balanced: {
+                label: "Balanced GLB",
+                textureSize: 2048,
+                hint: "Recommended hosted default: noticeably sharper textures without the full 4K export cost."
+            },
+            detail: {
+                label: "High Detail GLB",
+                textureSize: 4096,
+                hint: "Maximum texture fidelity. Use when the runtime is already warm and you have quota headroom."
+            }
+        };
+        const PREPROCESS_TIMEOUT_MS = 120000;
+
+        function withTimeout(promise, timeoutMs, label) {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+                }),
+            ]);
+        }
+
+        // Global queue status polling
+        function startQueuePolling() {
+            async function pollQueue() {
+                try {
+                    const resp = await fetch(`/queue?session_id=${sessionId}`);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        const badge = document.getElementById('queue-badge');
+                        const countEl = document.getElementById('queue-count');
+                        const total = data.total_waiting + (data.gpu_busy ? 1 : 0);
+                        countEl.textContent = total;
+                        if (total > 0) {
+                            badge.classList.add('busy');
+                        } else {
+                            badge.classList.remove('busy');
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+            }
+            pollQueue();
+            setInterval(pollQueue, 3000);
+        }
+
+        async function init() {
+            lucide.createIcons();
+            startQueuePolling();
+            try {
+                client = await Client.connect(window.location.origin);
+                window.__pixal3dClientReady = true;
+                window.__pixal3dRunGeneration = () => startGeneration();
+                window.__pixal3dLoadSamplePath = async (path = 'assets/images/0_img.png') => {
+                    showLoading();
+                    const res = await fetch(path);
+                    const blob = await res.blob();
+                    const ext = path.split('.').pop().toLowerCase();
+                    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+                    const mime = mimeMap[ext] || 'image/png';
+                    const file = new File([blob], path.split('/').pop(), { type: mime });
+                    await handleImageUpload(file);
+                    hideLoading();
+                };
+                setupUI();
+                loadSamples();
+                hideViewerError();
+                await refreshRuntimeStatus();
+                scheduleRuntimePollInterval(lastRuntimeHealth);
+            } catch (err) {
+                console.error("Connection error:", err);
+                showToast("Connection failed. Try refreshing.");
+            }
+        }
+
+        function setupUI() {
+            // File Handling
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+
+            dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.borderColor = 'var(--primary)'; };
+            dropZone.ondragleave = () => dropZone.style.borderColor = 'var(--border)';
+            dropZone.ondrop = (e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files.length) handleImageUpload(e.dataTransfer.files[0]);
+            };
+            fileInput.onchange = (e) => { if (e.target.files.length) handleImageUpload(e.target.files[0]); };
+
+            // Buttons
+            document.getElementById('generate-btn').onclick = startGeneration;
+            document.getElementById('extract-btn').onclick = startExtraction;
+            document.getElementById('download-btn').onclick = () => {
+                const link = document.createElement('a');
+                link.href = document.getElementById('main-3d-viewer').src;
+                link.download = "pixal3d_export.glb";
+                link.click();
+            };
+            document.getElementById('export-profile').onchange = updateExportProfileHint;
+            updateExportProfileHint();
+            document.getElementById('show-texture-controls').onchange = (e) => {
+                document.getElementById('texture-controls').style.display = e.target.checked ? 'block' : 'none';
+            };
+
+            // Clear button
+            document.getElementById('clear-btn').onclick = () => {
+                // Reset state
+                currentFile = null;
+                preprocessedFile = null;
+                generationResult = null;
+                runtimePrimed = false;
+                currentFrame = 0;
+                currentMode = "shaded_forest";
+
+                // Reset source preview
+                document.getElementById('source-preview').src = '';
+                document.getElementById('source-preview').style.display = 'none';
+                document.getElementById('upload-hint').style.display = 'flex';
+                document.getElementById('file-input').value = '';
+
+                // Reset generate button
+                document.getElementById('generate-btn').disabled = true;
+
+                // Reset preview frames
+                document.getElementById('frame-container').innerHTML = '';
+                document.getElementById('angle-slider').value = 0;
+                document.getElementById('angle-display').textContent = '00';
+
+                // Reset 3D viewer
+                resetModelViewer();
+
+                // Reset thumbnails
+                document.getElementById('ref-thumb-2').style.display = 'none';
+                document.getElementById('ref-thumb-2').src = '';
+                document.getElementById('ref-thumb-3').style.display = 'none';
+                document.getElementById('ref-thumb-3').src = '';
+
+                // Reset mode tabs
+                document.querySelectorAll('.mode-tab').forEach(t => {
+                    t.classList.toggle('active', t.textContent === 'Forest');
+                });
+
+                // Go back to step 1
+                setStep(1);
+                refreshRuntimeStatus();
+                showToast("Cleared. Ready for new upload.");
+            };
+
+            // Step navigation click
+            document.getElementById('step-1').onclick = () => setStep(1);
+            document.getElementById('step-2').onclick = () => {
+                if (generationResult?.preview_available !== false && generationResult?.render_paths && Object.keys(generationResult.render_paths).length) {
+                    setStep(2);
+                }
+            };
+            document.getElementById('step-3').onclick = () => { if (document.getElementById('main-3d-viewer').src) setStep(3); };
+
+            // Slider
+            document.getElementById('angle-slider').oninput = (e) => {
+                currentFrame = parseInt(e.target.value);
+                document.getElementById('angle-display').textContent = (currentFrame * 22.5).toFixed(0).padStart(2, '0');
+                updateFrame();
+            };
+
+            // FOV auto toggle & unit switch
+            const fovAutoCheck = document.getElementById('fov-auto');
+            const fovInput = document.getElementById('manual-fov');
+            const fovUnit = document.getElementById('fov-unit');
+            const fovHint = document.getElementById('fov-hint');
+
+            function updateFovEnabled() {
+                const manual = !fovAutoCheck.checked;
+                fovInput.disabled = !manual;
+                fovUnit.disabled = !manual;
+                fovInput.style.opacity = manual ? '1' : '0.4';
+                fovUnit.style.opacity = manual ? '1' : '0.4';
+            }
+
+            fovAutoCheck.onchange = updateFovEnabled;
+
+            fovUnit.onchange = () => {
+                const val = parseFloat(fovInput.value);
+                if (isNaN(val)) return;
+                if (fovUnit.value === 'rad') {
+                    // deg -> rad
+                    fovInput.value = (val * Math.PI / 180).toFixed(4);
+                    fovInput.min = '0.0175'; fovInput.max = '2.9671'; fovInput.step = '0.01';
+                    fovHint.textContent = 'Manual FOV in radians (0.02–2.97 rad)';
+                } else {
+                    // rad -> deg
+                    fovInput.value = (val * 180 / Math.PI).toFixed(1);
+                    fovInput.min = '1'; fovInput.max = '170'; fovInput.step = '0.5';
+                    fovHint.textContent = 'Uncheck "Auto" to manually set FOV (1°–170°)';
+                }
+            };
+
+            // Mode Grid
+            const grid = document.getElementById('mode-grid');
+            MODES.forEach(m => {
+                const tab = document.createElement('div');
+                tab.className = `mode-tab ${m.key === currentMode ? 'active' : ''}`;
+                tab.textContent = m.name;
+                tab.onclick = () => {
+                    currentMode = m.key;
+                    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    updateFrame();
+                };
+                grid.appendChild(tab);
+            });
+        }
+
+        async function runPreprocess(file) {
+            isPreprocessing = true;
+            showToast("Removing background...", 4000);
+            try {
+                const result = await withTimeout(
+                    client.predict("/preprocess", { image: handle_file(file) }),
+                    PREPROCESS_TIMEOUT_MS,
+                    "Background removal",
+                );
+                const processedUrl = result.data[0].url;
+                if (processedUrl) {
+                    preprocessedFile = processedUrl;
+                    document.getElementById('source-preview').src = processedUrl;
+                    document.getElementById('ref-thumb-2').src = processedUrl;
+                    document.getElementById('ref-thumb-2').style.display = 'block';
+                    document.getElementById('ref-thumb-3').src = processedUrl;
+                    document.getElementById('ref-thumb-3').style.display = 'block';
+                }
+            } catch (err) {
+                console.error("Preprocess failed:", err);
+                showToast(formatApiError(err, "Background removal failed. Continuing with the original upload."), 5200);
+            } finally {
+                isPreprocessing = false;
+            }
+        }
+
+        async function handleImageUpload(file) {
+            currentFile = file;
+            preprocessedFile = null;
+            document.body.dataset.smokeFileReady = 'true';
+            document.getElementById('generate-btn').disabled = true;
+            await new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = document.getElementById('source-preview');
+                    const hint = document.getElementById('upload-hint');
+                    img.src = e.target.result;
+                    img.style.display = 'block';
+                    hint.style.display = 'none';
+                    setStep(1);
+                    resolve();
+                };
+                reader.readAsDataURL(file);
+            });
+            updateGenerateAvailability(lastRuntimeHealth);
+            void runPreprocess(file);
+        }
+
+        function isCpuStandby(health) {
+            if (!health) return false;
+            return health.runtime_mode === 'cpu' || health.state === 'cpu-standby';
+        }
+
+        function isGenerationBusy() {
+            const overlay = document.getElementById('loading-overlay');
+            return overlay && overlay.style.display === 'flex';
+        }
+
+        function updateGenerateAvailability(health) {
+            const btn = document.getElementById('generate-btn');
+            if (!btn || isGenerationBusy()) return;
+            if (isCpuStandby(health)) {
+                btn.disabled = true;
+                btn.title = health?.message || 'Waiting for GPU hardware. This page reloads automatically when ZeroGPU is ready.';
+                return;
+            }
+            if (
+                health
+                && health.runtime_mode !== 'zerogpu'
+                && !lastRuntimeReady
+            ) {
+                btn.disabled = true;
+                btn.title = health?.message || 'Models are still warming. Generate unlocks when the runtime reports ready.';
+                return;
+            }
+            btn.title = '';
+            btn.disabled = !currentFile;
+        }
+
+        function scheduleRuntimePollInterval(health) {
+            let ms = RUNTIME_POLL_MS_DEFAULT;
+            if (isCpuStandby(health)) {
+                ms = RUNTIME_POLL_MS_FAST;
+            } else if (!lastRuntimeReady) {
+                ms = RUNTIME_POLL_MS_FAST;
+            }
+            if (runtimeStatusInterval) clearInterval(runtimeStatusInterval);
+            runtimeStatusInterval = setInterval(refreshRuntimeStatus, ms);
+        }
+
+        function handleRuntimeModeTransition(health) {
+            const mode = health?.runtime_mode || null;
+            const prev = lastObservedRuntimeMode;
+            lastObservedRuntimeMode = mode;
+            if (prev == null || prev !== 'cpu' || mode !== 'zerogpu') return;
+            if (isGenerationBusy() || isPreprocessing) return;
+            showToast('ZeroGPU runtime is ready. Reloading in 3 seconds…', 5000);
+            setTimeout(() => location.reload(), 3000);
+        }
+
+        async function refreshRuntimeStatus() {
+            try {
+                const [healthResp, readyResp] = await Promise.all([
+                    fetch('/health', { cache: 'no-store' }),
+                    fetch('/ready', { cache: 'no-store' }),
+                ]);
+                if (!healthResp.ok) return;
+                const data = await healthResp.json();
+                lastRuntimeReady = readyResp.ok;
+                if (!lastRuntimeReady) {
+                    try {
+                        const readyPayload = await readyResp.json();
+                        if (readyPayload.state) data.state = readyPayload.state;
+                        if (readyPayload.message) data.message = readyPayload.message;
+                    } catch (_) { /* ignore */ }
+                }
+                lastRuntimeHealth = data;
+                const badge = document.getElementById('runtime-status-badge');
+                const text = document.getElementById('runtime-status-text');
+                let state = data.state || (lastRuntimeReady ? 'ready' : 'pending');
+                if (
+                    !lastRuntimeReady
+                    && !isCpuStandby(data)
+                    && data.runtime_mode !== 'zerogpu'
+                    && state === 'pending'
+                ) {
+                    state = 'initializing';
+                }
+                const stateLabel = {
+                    pending: 'Cold',
+                    initializing: 'Warming',
+                    ready: 'Ready',
+                    error: 'Error',
+                    'cpu-standby': 'CPU Standby'
+                }[state] || 'Live';
+
+                badge.dataset.state = state;
+                badge.textContent = stateLabel;
+                if (isCpuStandby(data)) {
+                    text.textContent = data.message
+                        || 'This Space is on CPU standby while GPU hardware starts. Generate unlocks after ZeroGPU is ready.';
+                } else if (lastRuntimeReady) {
+                    text.textContent = 'Runtime is hot. Generation should start immediately unless the hosted queue is saturated.';
+                } else if (data.runtime_mode === 'zerogpu') {
+                    text.textContent =
+                        'ZeroGPU cold start. First Generate loads the model stack in a hosted GPU slice. ' +
+                        'If the slice ends early while models load, sign in below for more quota or retry after the daily reset.';
+                } else {
+                    text.textContent = data.message || 'Models are warming on the hosted GPU. Generate unlocks when ready.';
+                }
+                runtimePrimed = lastRuntimeReady;
+                applyZeroGpuHostedDefaults(data);
+                updateRuntimeBudgetHint(data);
+                updateGenerateAvailability(data);
+                handleRuntimeModeTransition(data);
+                scheduleRuntimePollInterval(data);
+            } catch (err) {
+                console.debug('Runtime status probe failed:', err);
+            }
+        }
+
+        function applyZeroGpuHostedDefaults(health) {
+            if (health?.runtime_mode !== 'zerogpu') return;
+            const exportSelect = document.getElementById('export-profile');
+            if (exportSelect && exportSelect.dataset.zerogpuDefaulted !== '1') {
+                exportSelect.value = 'fast';
+                exportSelect.dataset.zerogpuDefaulted = '1';
+                updateExportProfileHint();
+            }
+            const resolutionSelect = document.getElementById('resolution');
+            if (resolutionSelect && resolutionSelect.dataset.zerogpuDefaulted !== '1') {
+                resolutionSelect.value = '512';
+                resolutionSelect.dataset.zerogpuDefaulted = '1';
+            }
+        }
+
+        function updateRuntimeBudgetHint(health) {
+            const hint = document.getElementById('runtime-budget-hint');
+            const signIn = document.getElementById('runtime-signin-link');
+            if (!hint) return;
+            const budgets = health?.zerogpu_gpu_budgets;
+            if (health?.runtime_mode !== 'zerogpu' || !budgets) {
+                hint.hidden = true;
+                hint.textContent = '';
+                if (signIn) signIn.hidden = true;
+                return;
+            }
+            hint.hidden = false;
+            hint.textContent =
+                `Hosted GPU slices: generate up to ${budgets.generation_max_seconds}s, export ${budgets.extract_seconds}s. ` +
+                `${budgets.quota_multiplier_note || 'Sign in on Hugging Face for higher daily quota.'}`;
+            if (signIn) {
+                signIn.hidden = false;
+                signIn.href = `https://huggingface.co/login?next=${encodeURIComponent(window.location.href)}`;
+            }
+        }
+
+        function updateExportProfileHint() {
+            const profile = getExportProfile();
+            document.getElementById('export-profile-hint').textContent = profile.hint;
+        }
+
+        function getExportProfile() {
+            const value = document.getElementById('export-profile').value;
+            return EXPORT_PROFILES[value] || EXPORT_PROFILES.balanced;
+        }
+
+        function formatApiError(err, fallback) {
+            const parts = [];
+            const visit = (value) => {
+                if (!value) return;
+                if (typeof value === 'string') {
+                    const trimmed = value.trim();
+                    if (trimmed) parts.push(trimmed);
+                    return;
+                }
+                if (typeof value !== 'object') return;
+                ['title', 'message', 'original_msg', 'error'].forEach((key) => {
+                    if (typeof value[key] === 'string' && value[key].trim()) {
+                        parts.push(value[key].trim());
+                    }
+                });
+                if (value.cause) visit(value.cause);
+            };
+            visit(err);
+            const unique = [...new Set(parts)];
+            if (!unique.length) return fallback;
+            const combined = unique.join(': ');
+            const trimmed = combined.length > 260 ? combined.slice(0, 257) + '...' : combined;
+            return enrichZeroGpuError(trimmed);
+        }
+
+        function enrichZeroGpuError(message) {
+            if (!message || lastRuntimeHealth?.runtime_mode !== 'zerogpu') return message;
+            if (/quota exceeded/i.test(message)) {
+                return `${message} Hosted ZeroGPU may bill up to 2× the declared GPU slice on xlarge hardware — sign in at huggingface.co for a higher daily quota.`;
+            }
+            if (/GPU task aborted/i.test(message)) {
+                return `${message} The hosted GPU slice ended before the cold model stack finished. Retry after the daily quota resets or sign in for more ZeroGPU time.`;
+            }
+            return message;
+        }
+
+        function buildTransitionMessage(result, fallback) {
+            const base = result?.message || fallback;
+            if (result?.hardware_transition_requested) {
+                return `${base} ZeroGPU hardware was requested. Reload this page in a few minutes once the Space restarts on GPU.`;
+            }
+            return base;
+        }
+
+        async function ensureRuntimePrimed() {
+            if (runtimePrimed) return;
+
+            if (lastRuntimeHealth?.runtime_mode === 'zerogpu') {
+                // generate_3d already calls ensure_runtime_ready in its GPU slice;
+                // a separate warmup would stack another quota reservation.
+                return;
+            }
+
+            startProgressListener();
+            try {
+                const result = await client.predict("/warmup_runtime", { session_id: sessionId });
+                const payload = firstResultData(result);
+                if (payload?.error) {
+                    throw new Error(buildTransitionMessage(payload, 'Runtime warmup could not complete on this hardware.'));
+                }
+                runtimePrimed = true;
+                stopProgressListener();
+                await refreshRuntimeStatus();
+            } catch (err) {
+                stopProgressListener();
+                throw err;
+            }
+        }
+
+        function setStep(num) {
+            currentStep = num;
+            document.querySelectorAll('.step-item').forEach((item, i) => {
+                item.className = 'step-item';
+                if (i + 1 < num) item.classList.add('completed');
+                if (i + 1 === num) item.classList.add('active');
+            });
+            document.querySelectorAll('.panel').forEach((p, i) => {
+                p.classList.toggle('active', i + 1 === num);
+            });
+
+            // Toggle side controls based on step
+            document.getElementById('render-controls').style.display = (num >= 2) ? 'block' : 'none';
+            document.getElementById('export-controls').style.display = (num >= 2) ? 'block' : 'none';
+            const canExtract = generationResult?.extract_available !== false;
+            document.getElementById('extract-btn').style.display = (
+                canExtract && (num === 2 || (num === 3 && generationResult?.glb_path))
+            ) ? 'flex' : 'none';
+            document.getElementById('download-btn').style.display = (num === 3) ? 'flex' : 'none';
+        }
+
+        function looksLikeGenerationResult(value) {
+            return !!value
+                && typeof value === 'object'
+                && !Array.isArray(value)
+                && (
+                    'glb_path' in value
+                    || 'render_paths' in value
+                    || 'error' in value
+                    || 'state_path' in value
+                );
+        }
+
+        function firstResultData(result, depth = 0) {
+            if (depth > 4 || result == null) return null;
+            if (looksLikeGenerationResult(result)) return result;
+            if (Array.isArray(result)) {
+                for (const item of result) {
+                    const found = firstResultData(item, depth + 1);
+                    if (found) return found;
+                }
+                return result.find((item) => item != null) ?? null;
+            }
+            if (typeof result === 'object') {
+                for (const key of ['data', 'value', 'output', 'result']) {
+                    if (!(key in result)) continue;
+                    const found = firstResultData(result[key], depth + 1);
+                    if (found) return found;
+                }
+            }
+            return result;
+        }
+
+        function describeApiResult(result) {
+            try {
+                return JSON.stringify(result);
+            } catch (_) {
+                return String(result);
+            }
+        }
+
+        function extractErrorText(err) {
+            if (!err) return '';
+            if (typeof err === 'string') return err;
+            const parts = [];
+            if (err.message) parts.push(err.message);
+            if (err.title) parts.push(err.title);
+            if (err.error) parts.push(extractErrorText(err.error));
+            try {
+                const json = JSON.stringify(err);
+                if (json && json !== '{}') parts.push(json);
+            } catch (_) { }
+            return parts.filter(Boolean).join(' ');
+        }
+
+        function localTmpUrl(path) {
+            if (!path) return '';
+            const filename = path.split(/[\\/]/).pop();
+            return filename ? `/tmp/${filename}` : '';
+        }
+
+        function getFileUrl(fileLike) {
+            if (!fileLike) return '';
+            if (typeof fileLike === 'string') return fileLike.startsWith('/tmp/') ? fileLike : localTmpUrl(fileLike);
+            if (fileLike.url) return fileLike.url;
+            if (fileLike.path) return localTmpUrl(fileLike.path);
+            return '';
+        }
+
+        function updateCameraInfo(result) {
+            if (result?.camera_angle_x != null) {
+                document.getElementById('fov-display').textContent = result.camera_angle_x.toFixed(3);
+                document.getElementById('dist-display').textContent = result.distance.toFixed(3);
+                document.getElementById('camera-info').style.display = 'inline';
+            }
+        }
+
+        async function loadViewerModel(glbUrl, targetStep = 3) {
+            const viewer = resetModelViewer();
+            await new Promise((resolve) => {
+                let settled = false;
+                const onLoad = () => {
+                    if (settled) return;
+                    settled = true;
+                    viewer.removeEventListener('load', onLoad);
+                    clearTimeout(timer);
+                    resolve();
+                };
+                const timer = setTimeout(() => {
+                    if (settled) return;
+                    settled = true;
+                    viewer.removeEventListener('load', onLoad);
+                    resolve();
+                }, 30000);
+                viewer.addEventListener('load', onLoad);
+                viewer.src = glbUrl;
+            });
+            viewer.style.visibility = 'visible';
+            setStep(targetStep);
+            document.body.dataset.smokeGlbReady = 'true';
+            return viewer;
+        }
+
+        function markSmokeGenerationAbort(reason) {
+            document.body.dataset.smokeGenerationAbort = reason;
+        }
+
+        async function startGeneration() {
+            document.body.dataset.smokeGenerationRequested = 'true';
+            delete document.body.dataset.smokeGenerationAbort;
+            if (!currentFile) {
+                markSmokeGenerationAbort('no-file');
+                return;
+            }
+            if (isCpuStandby(lastRuntimeHealth)) {
+                markSmokeGenerationAbort('cpu-standby');
+                showToast(
+                    lastRuntimeHealth?.message || 'Waiting for GPU hardware. This page reloads automatically when ZeroGPU is ready.',
+                    5200
+                );
+                return;
+            }
+            if (
+                lastRuntimeHealth
+                && lastRuntimeHealth.runtime_mode !== 'zerogpu'
+                && !lastRuntimeReady
+            ) {
+                markSmokeGenerationAbort('warming');
+                showToast(
+                    lastRuntimeHealth?.message || 'Models are still warming. Wait for the runtime to report ready.',
+                    5200
+                );
+                return;
+            }
+
+            // Clear old preview frames and 3D result
+            generationResult = null;
+            delete document.body.dataset.smokeGlbReady;
+            delete document.body.dataset.smokeGenerationRequested;
+            document.getElementById('frame-container').innerHTML = '';
+            document.getElementById('angle-slider').value = 0;
+            document.getElementById('angle-display').textContent = '00';
+            resetModelViewer();
+            hideViewerError();
+            document.getElementById('extract-btn').style.display = 'none';
+            document.getElementById('download-btn').style.display = 'none';
+
+            // Stay on step 1 during generation
+            setStep(1);
+
+            showLoading();
+            const generationEndpoint = "/generate_3d";
+            const params = {
+                image: preprocessedFile ? handle_file(preprocessedFile) : handle_file(currentFile),
+                seed: parseInt(document.getElementById('seed').value),
+                resolution: parseInt(document.getElementById('resolution').value),
+                ss_guidance_strength: parseFloat(document.getElementById('ss_gs').value),
+                ss_sampling_steps: parseInt(document.getElementById('ss_steps').value),
+                shape_slat_guidance_strength: parseFloat(document.getElementById('shape_gs').value),
+                shape_slat_sampling_steps: parseInt(document.getElementById('shape_steps').value),
+                tex_slat_guidance_strength: parseFloat(document.getElementById('tex_gs').value),
+                tex_slat_sampling_steps: parseInt(document.getElementById('tex_steps').value),
+                manual_fov: (() => {
+                    if (document.getElementById('fov-auto').checked) return -1.0;
+                    const v = parseFloat(document.getElementById('manual-fov').value);
+                    return document.getElementById('fov-unit').value === 'rad' ? v * 180 / Math.PI : v;
+                })(),
+                session_id: sessionId
+            };
+
+            try {
+                await ensureRuntimePrimed();
+                startProgressListener();
+                await fetch(`/queue/join?session_id=${sessionId}`);
+                const result = await client.predict(generationEndpoint, params);
+                generationResult = firstResultData(result);
+            } catch (err) {
+                console.error(err);
+                stopProgressListener();
+                hideLoading();
+                resetModelViewer();
+                await refreshRuntimeStatus();
+                showViewerError(
+                    formatApiError(err, 'An error occurred during synthesis.'),
+                    { title: 'Generation failed' }
+                );
+                return;
+            }
+
+            stopProgressListener();
+
+            if (generationResult?.error) {
+                hideLoading();
+                resetModelViewer();
+                await refreshRuntimeStatus();
+                showViewerError(
+                    buildTransitionMessage(generationResult, 'Generation could not complete.'),
+                    { title: generationResult.hardware_transition_requested ? 'ZeroGPU required' : 'Generation failed' }
+                );
+                return;
+            }
+
+            updateCameraInfo(generationResult);
+
+            if (!looksLikeGenerationResult(generationResult)) {
+                hideLoading();
+                resetModelViewer();
+                showViewerError(
+                    `Unexpected generation response shape: ${describeApiResult(generationResult)}`,
+                    { title: 'Generation failed' }
+                );
+                return;
+            }
+
+            if (generationResult?.glb_path) {
+                const glbUrl = getFileUrl(generationResult.glb_path);
+                await loadViewerModel(glbUrl, 3);
+                hideLoading();
+                const hint = generationResult.message
+                    || (generationResult.preview_available === false && generationResult.extract_available !== false
+                        ? 'Geometry preview ready. Use Export on the right for a textured GLB.'
+                        : '3D asset ready!');
+                showToast(hint, generationResult.preview_available === false ? 6500 : 4500);
+                return;
+            }
+
+            populateFrames(generationResult.render_paths);
+            setStep(2);
+            await refreshRuntimeStatus();
+            hideLoading();
+            showToast(generationResult.message || "Generation complete!");
+        }
+
+        // Progress Polling
+        let progressInterval = null;
+        let lastStageName = "";
+
+        function startProgressListener() {
+            // Show progress UI
+            document.getElementById('progress-stages').style.display = 'block';
+            document.getElementById('progress-log').innerHTML = '';
+            document.getElementById('progress-stage-name').textContent = 'Initializing...';
+            document.getElementById('progress-step-text').textContent = '';
+            document.getElementById('progress-bar-fill').style.width = '0%';
+            lastStageName = "";
+
+            // Poll every 500ms: prefer real progress, then fall back to queue hints
+            let queuePollCount = 0;
+            progressInterval = setInterval(async () => {
+                queuePollCount++;
+                try {
+                    const resp = await fetch(`/progress?session_id=${sessionId}`);
+                    if (!resp.ok) return;
+                    const data = await resp.json();
+                    if (data.done) {
+                        stopProgressListener();
+                        return;
+                    }
+                    const hasMeaningfulProgress = !(
+                        data.stage === "Waiting..." && data.step === 0 && data.total === 0
+                    );
+                    if (hasMeaningfulProgress) {
+                        updateProgressUI(data);
+                        return;
+                    }
+
+                    const qResp = await fetch(`/queue?session_id=${sessionId}`);
+                    if (!qResp.ok) return;
+                    const q = await qResp.json();
+                    if (q.position > 0) {
+                        document.getElementById('progress-stage-name').textContent =
+                            `In queue: ${q.position} request${q.position > 1 ? 's' : ''} ahead`;
+                        document.getElementById('progress-step-text').textContent = 'Waiting for GPU...';
+                        document.getElementById('progress-bar-fill').style.width = '0%';
+                        return;
+                    }
+                    if (q.position === -2) {
+                        document.getElementById('progress-stage-name').textContent = 'Connecting to GPU...';
+                        document.getElementById('progress-step-text').textContent = '';
+                        document.getElementById('progress-bar-fill').style.width = '0%';
+                        return;
+                    }
+                    if (q.position === -1) {
+                        if (q.total_ahead_for_unregistered > 0) {
+                            const ahead = q.total_ahead_for_unregistered;
+                            document.getElementById('progress-stage-name').textContent =
+                                `In queue: ${ahead} request${ahead > 1 ? 's' : ''} ahead`;
+                            document.getElementById('progress-step-text').textContent = 'Waiting for GPU...';
+                        } else {
+                            document.getElementById('progress-stage-name').textContent = 'Preparing inference...';
+                            document.getElementById('progress-step-text').textContent = '';
+                        }
+                        document.getElementById('progress-bar-fill').style.width = '0%';
+                    }
+                } catch (e) { }
+            }, 500);
+        }
+
+        function stopProgressListener() {
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
+            }
+        }
+
+        function updateProgressUI(data) {
+            const stageName = data.stage || '';
+            const step = data.step || 0;
+            const total = data.total || 0;
+
+            // If stage changed, log the previous one as completed
+            if (stageName && stageName !== lastStageName) {
+                if (lastStageName) {
+                    const logEl = document.getElementById('progress-log');
+                    logEl.innerHTML += `<div style="display:flex;align-items:center;gap:0.4rem;"><span style="color:var(--accent);">✓</span> ${lastStageName}</div>`;
+                    logEl.scrollTop = logEl.scrollHeight;
+                }
+                lastStageName = stageName;
+            }
+
+            // Update current stage display
+            document.getElementById('progress-stage-name').textContent = stageName;
+            if (total > 0) {
+                document.getElementById('progress-step-text').textContent = `${step}/${total}`;
+                const pct = Math.min(100, (step / total) * 100);
+                document.getElementById('progress-bar-fill').style.width = pct + '%';
+            } else {
+                document.getElementById('progress-step-text').textContent = '';
+                document.getElementById('progress-bar-fill').style.width = '0%';
+            }
+        }
+
+        function populateFrames(renderPaths) {
+            const container = document.getElementById('frame-container');
+            container.innerHTML = '';
+            Object.entries(renderPaths).forEach(([mode, files]) => {
+                files.forEach((file, i) => {
+                    const img = document.createElement('img');
+                    let url = getFileUrl(file);
+                    img.src = url;
+                    img.className = 'preview-frame';
+                    img.id = `frame-${mode}-${i}`;
+                    img.onerror = () => {
+                        const fallback = typeof file === 'object' && file?.path ? localTmpUrl(file.path) : '';
+                        if (fallback && !img.src.includes('/tmp/')) {
+                            img.src = fallback;
+                        }
+                    };
+                    container.appendChild(img);
+                });
+            });
+            updateFrame();
+        }
+
+        function updateFrame() {
+            document.querySelectorAll('.preview-frame').forEach(f => f.classList.remove('active'));
+            const active = document.getElementById(`frame-${currentMode}-${currentFrame}`);
+            if (active) active.classList.add('active');
+        }
+
+        // Destroy and recreate model-viewer to fully purge old mesh from WebGL
+        function resetModelViewer() {
+            const container = document.querySelector('#panel-3 .viewer-wrapper');
+            const old = document.getElementById('main-3d-viewer');
+            if (old) old.remove();
+            const mv = document.createElement('model-viewer');
+            mv.id = 'main-3d-viewer';
+            mv.setAttribute('camera-controls', '');
+            mv.setAttribute('auto-rotate', '');
+            mv.setAttribute('camera-orbit', '-180deg 90deg auto');
+            mv.setAttribute('shadow-intensity', '1.5');
+            mv.setAttribute('environment-image', 'neutral');
+            mv.setAttribute('exposure', '1.2');
+            mv.style.width = '100%';
+            mv.style.height = '100%';
+            mv.style.background = 'radial-gradient(circle at 50% 50%, #1a2235 0%, #0b0f1a 100%)';
+            mv.style.visibility = 'hidden';
+            mv.innerHTML = '<div slot="progress-bar" style="background: var(--primary); height: 4px;"></div>';
+            // Insert BEFORE the error overlay so the overlay stays on top in DOM order
+            const overlay = document.getElementById('viewer-error');
+            if (overlay) container.insertBefore(mv, overlay);
+            else container.appendChild(mv);
+            return mv;
+        }
+
+        function hideViewerError() {
+            const el = document.getElementById('viewer-error');
+            if (el) el.classList.remove('show');
+            const signIn = document.getElementById('viewer-error-signin');
+            if (signIn) signIn.hidden = true;
+        }
+
+        function showViewerError(message, opts) {
+            const el = document.getElementById('viewer-error');
+            if (!el) return;
+            const title = (opts && opts.title) || 'Generation could not complete';
+            const msgText = (message && String(message).trim()) || 'An unknown error occurred.';
+            const resolvedTitle = /GPU task aborted/i.test(msgText)
+                ? 'GPU slice ended early'
+                : (/quota exceeded/i.test(msgText) ? 'ZeroGPU quota reached' : title);
+            document.getElementById('viewer-error-title').textContent = resolvedTitle;
+            document.getElementById('viewer-error-message').textContent = msgText;
+            const signIn = document.getElementById('viewer-error-signin');
+            if (signIn) {
+                const showSignIn = /quota exceeded|GPU task aborted/i.test(msgText);
+                signIn.hidden = !showSignIn;
+                if (showSignIn) {
+                    signIn.href = `https://huggingface.co/login?next=${encodeURIComponent(window.location.href)}`;
+                }
+            }
+            el.classList.add('show');
+            if (typeof setStep === 'function') setStep(3);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const copyBtn = document.getElementById('viewer-error-copy');
+            const dismissBtn = document.getElementById('viewer-error-dismiss');
+            if (copyBtn) copyBtn.addEventListener('click', async () => {
+                const msg = document.getElementById('viewer-error-message').textContent || '';
+                try {
+                    await navigator.clipboard.writeText(msg);
+                    copyBtn.textContent = 'Copied';
+                    setTimeout(() => { copyBtn.textContent = 'Copy details'; }, 1500);
+                } catch (_) { /* clipboard unavailable */ }
+            });
+            if (dismissBtn) dismissBtn.addEventListener('click', hideViewerError);
+        });
+
+        async function startExtraction() {
+            if (!generationResult) return;
+
+            // Switch away from panel-3 immediately so user won't see stale mesh
+            if (currentStep === 3) setStep(2);
+
+            // Destroy old model-viewer and create a fresh one (purges WebGL scene completely)
+            const viewer = resetModelViewer();
+
+            showLoading();
+            startProgressListener();
+            const extractionEndpoint = "/extract_glb_api";
+            const exportProfile = getExportProfile();
+            const params = {
+                state_path: generationResult.state_path,
+                decimation_target: parseInt(document.getElementById('decimation').value),
+                texture_size: exportProfile.textureSize,
+                session_id: sessionId
+            };
+
+            try {
+                await fetch(`/queue/join?session_id=${sessionId}`);
+                const result = await client.predict(extractionEndpoint, params);
+                const glbUrl = getFileUrl(firstResultData(result));
+
+                stopProgressListener();
+                await loadViewerModel(glbUrl, 3);
+                await refreshRuntimeStatus();
+                hideLoading();
+                showToast(`${exportProfile.label} ready!`, 4500);
+            } catch (err) {
+                console.error(err);
+                stopProgressListener();
+                viewer.style.visibility = 'visible';
+                hideLoading();
+                await refreshRuntimeStatus();
+                showToast(formatApiError(err, "Export failed. Try the Fast Preview GLB profile first."), 6500);
+            }
+        }
+
+        function loadSamples() {
+            const grid = document.getElementById('examples-grid');
+            const samples = [
+                'assets/images/0_img.png',
+                'assets/images/1_img.png',
+                'assets/images/3_img.webp',
+                'assets/images/4_img.png',
+                'assets/images/5_img.webp',
+                'assets/images/6_img.png',
+                'assets/images/7_img.png',
+                'assets/images/9_img.png',
+                'assets/images/10_img.webp',
+                'assets/images/11_img.png',
+                'assets/images/12_img.png',
+                'assets/images/17_img.png',
+                'assets/images/21_img.png',
+                'assets/images/s_13_img.jpg',
+                'assets/images/s_14_img.jpg',
+                'assets/images/s_15_img.png',
+                'assets/images/s_16_img.png',
+                'assets/images/s_18_img.png',
+                'assets/images/s_20_img.webp',
+                'assets/images/musicman.png',
+                'assets/images/pizza.png',
+                'assets/images/sculpt.png',
+                'assets/images/treehouse.png',
+                'assets/images/warship.png',
+                'assets/images/5c80e5e03a3b60b6f03eaf555ba1dafc0e4230c472d7e8c8e2c5ca0a0dfcef10.webp',
+                'assets/images/c9340e744541f310bf89838f652602961d3e5950b31cd349bcbfc7e59e15cd2e.webp',
+                'assets/images/f94e2b76494ce2cf1874611273e5fb3d76b395793bb5647492fa85c2ce0a248b.webp'
+            ];
+
+            // Create track element
+            const track = document.createElement('div');
+            track.className = 'examples-track';
+
+            function createItem(path) {
+                const div = document.createElement('div');
+                div.className = 'example-item';
+                div.innerHTML = `<img src="${path}" draggable="false">`;
+                div.onclick = async () => {
+                    showLoading();
+                    const res = await fetch(path);
+                    const blob = await res.blob();
+                    const ext = path.split('.').pop().toLowerCase();
+                    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+                    const mime = mimeMap[ext] || 'image/png';
+                    const file = new File([blob], path.split('/').pop(), { type: mime });
+                    await handleImageUpload(file);
+                    hideLoading();
+                };
+                return div;
+            }
+
+            samples.forEach(path => track.appendChild(createItem(path)));
+            samples.forEach(path => track.appendChild(createItem(path)));
+
+            grid.appendChild(track);
+        }
+
+        // Helpers
+        window.openLightbox = (src) => {
+            const lb = document.getElementById('lightbox-overlay');
+            document.getElementById('lightbox-img').src = src;
+            lb.style.display = 'flex';
+        };
+
+        window.closeLightbox = () => {
+            document.getElementById('lightbox-overlay').style.display = 'none';
+        };
+
+        // Thumbnail click to enlarge
+        document.getElementById('ref-thumb-2').onclick = (e) => { e.stopPropagation(); openLightbox(e.target.src); };
+        document.getElementById('ref-thumb-3').onclick = (e) => { e.stopPropagation(); openLightbox(e.target.src); };
+
+        window.toggleAdvanced = () => {
+            const el = document.getElementById('advanced-settings');
+            const chev = document.getElementById('adv-chevron');
+            const isOpen = el.style.display === 'block';
+            el.style.display = isOpen ? 'none' : 'block';
+            chev.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+        };
+
+        window.updateVal = (id) => {
+            const val = document.getElementById(id).value;
+            let label = val;
+            if (id === 'decimation') label = (val / 1000000).toFixed(1) + 'M';
+            document.getElementById(id + '_val').textContent = label;
+        };
+
+        window.randomizeSeed = () => {
+            const s = Math.floor(Math.random() * 999999);
+            document.getElementById('seed').value = s;
+            document.getElementById('seed-display').textContent = s;
+        };
+
+        function showLoading() {
+            document.getElementById('loading-overlay').style.display = 'flex';
+            document.body.dataset.smokeGenerationActive = 'true';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading-overlay').style.display = 'none';
+            delete document.body.dataset.smokeGenerationActive;
+            document.getElementById('progress-stages').style.display = 'none';
+            document.getElementById('progress-log').innerHTML = '';
+            document.getElementById('progress-bar-fill').style.width = '0%';
+        }
+
+        function showToast(msg, timeoutMs = 3200) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', timeoutMs);
+        }
+
+        // Gallery slider & scroll sync with auto-scroll
+        const exGrid = document.getElementById('examples-grid');
+        const gallerySlider = document.getElementById('gallery-slider');
+        let isSliderDragging = false;
+        let autoScrollPaused = false;
+        let pauseTimeout = null;
+        const AUTO_SCROLL_SPEED = 0.5; // px per frame
+
+        function updateSliderFromScroll() {
+            if (isSliderDragging) return;
+            const maxScroll = exGrid.scrollWidth - exGrid.clientWidth;
+            if (maxScroll <= 0) {
+                gallerySlider.value = 0;
+                return;
+            }
+            gallerySlider.value = (exGrid.scrollLeft / maxScroll) * 100;
+        }
+
+        exGrid.addEventListener('scroll', updateSliderFromScroll);
+
+        gallerySlider.addEventListener('input', () => {
+            isSliderDragging = true;
+            autoScrollPaused = true;
+            const maxScroll = exGrid.scrollWidth - exGrid.clientWidth;
+            exGrid.scrollTo({ left: (gallerySlider.value / 100) * maxScroll, behavior: 'auto' });
+        });
+        gallerySlider.addEventListener('pointerup', () => { isSliderDragging = false; resumeAutoScrollLater(); });
+        gallerySlider.addEventListener('change', () => { isSliderDragging = false; resumeAutoScrollLater(); });
+
+        // Mouse wheel horizontal scroll
+        exGrid.addEventListener('wheel', (e) => {
+            if (Math.abs(e.deltaY) > 0) {
+                e.preventDefault();
+                exGrid.scrollLeft += e.deltaY;
+                autoScrollPaused = true;
+                resumeAutoScrollLater();
+            }
+        }, { passive: false });
+
+        // Pause on hover
+        exGrid.addEventListener('mouseenter', () => { autoScrollPaused = true; });
+        exGrid.addEventListener('mouseleave', () => { resumeAutoScrollLater(500); });
+
+        function resumeAutoScrollLater(delay = 2000) {
+            clearTimeout(pauseTimeout);
+            pauseTimeout = setTimeout(() => { autoScrollPaused = false; }, delay);
+        }
+
+        // Auto-scroll loop via requestAnimationFrame
+        function autoScrollLoop() {
+            if (!autoScrollPaused) {
+                const maxScroll = exGrid.scrollWidth - exGrid.clientWidth;
+                if (maxScroll > 0) {
+                    exGrid.scrollLeft += AUTO_SCROLL_SPEED;
+                    // Loop back to start
+                    if (exGrid.scrollLeft >= maxScroll) {
+                        exGrid.scrollLeft = 0;
+                    }
+                }
+            }
+            requestAnimationFrame(autoScrollLoop);
+        }
+        requestAnimationFrame(autoScrollLoop);
+
+        init();
+    </script>
+</body>
+
+</html>
