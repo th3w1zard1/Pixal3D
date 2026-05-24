@@ -1855,8 +1855,12 @@
         };
 
         window.__pixal3dSmokeAdvance = () => {
+            const setTick = (value) => {
+                document.body.dataset.smokeTick = value;
+                return value;
+            };
             const s = window.__pixal3dSmokeAdvanceState;
-            if (!s) return 'error:not-initialized';
+            if (!s) return setTick('error:not-initialized');
 
             if (s.phase === 'idle') {
                 s.phase = 'loading';
@@ -1864,58 +1868,58 @@
                     s.lastError = err?.message || String(err);
                     s.phase = 'error';
                 });
-                return 'loading';
+                return setTick('loading');
             }
 
             if (s.phase === 'loading') {
-                if (s.lastError) return `error:${s.lastError}`;
+                if (s.lastError) return setTick(`error:${s.lastError}`);
                 const status = window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || '';
-                if (String(status).startsWith('err:')) return status;
-                if (document.body.dataset.smokeLoadError) return `error:${document.body.dataset.smokeLoadError}`;
+                if (String(status).startsWith('err:')) return setTick(status);
+                if (document.body.dataset.smokeLoadError) return setTick(`error:${document.body.dataset.smokeLoadError}`);
                 if (status === 'done' || document.body.dataset.smokeSampleLoad === 'done') {
                     s.phase = 'sample-done';
-                    return 'sample-done';
+                    return setTick('sample-done');
                 }
                 if (Date.now() > s.previewDeadline) {
                     s.phase = 'error';
                     s.lastError = 'sample-timeout';
-                    return 'timeout:sample';
+                    return setTick('timeout:sample');
                 }
-                return 'loading';
+                return setTick('loading');
             }
 
             if (s.phase === 'sample-done') {
                 if (!s.generationStarted) {
                     if (typeof window.__pixal3dRunGeneration !== 'function') {
-                        return 'error:no-generation-hook';
+                        return setTick('error:no-generation-hook');
                     }
                     s.generateDeadline = Date.now() + (s.generateWaitSec || 300) * 1000;
                     window.__pixal3dRunGeneration();
                     s.generationStarted = true;
                 }
                 s.phase = 'generating';
-                return 'generating';
+                return setTick('generating');
             }
 
             if (s.phase === 'generating') {
                 const errEl = document.getElementById('viewer-error');
                 if (errEl?.classList.contains('show')) {
                     const msg = document.getElementById('viewer-error-message')?.textContent?.trim() || 'viewer-error';
-                    return `error:${msg}`;
+                    return setTick(`error:${msg}`);
                 }
                 if (smokeGlbReady()) {
                     s.phase = 'done';
-                    return 'glb-ready';
+                    return setTick('glb-ready');
                 }
                 if (s.generateDeadline && Date.now() > s.generateDeadline) {
-                    return 'timeout:glb';
+                    return setTick('timeout:glb');
                 }
-                return 'generating';
+                return setTick('generating');
             }
 
-            if (s.phase === 'done') return 'glb-ready';
-            if (s.phase === 'error') return `error:${s.lastError || 'unknown'}`;
-            return s.phase;
+            if (s.phase === 'done') return setTick('glb-ready');
+            if (s.phase === 'error') return setTick(`error:${s.lastError || 'unknown'}`);
+            return setTick(s.phase);
         };
 
         async function handleImageUpload(file, options = {}) {
