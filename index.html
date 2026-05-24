@@ -1552,6 +1552,7 @@
                 hideViewerError();
                 await refreshRuntimeStatus();
                 scheduleRuntimePollInterval(lastRuntimeHealth);
+                window.__pixal3dRunGeneration = () => startGeneration();
             } catch (err) {
                 console.error("Connection error:", err);
                 showToast("Connection failed. Try refreshing.");
@@ -2544,10 +2545,12 @@
 
         function showLoading() {
             document.getElementById('loading-overlay').style.display = 'flex';
+            document.body.dataset.smokeGenerationActive = 'true';
         }
 
         function hideLoading() {
             document.getElementById('loading-overlay').style.display = 'none';
+            delete document.body.dataset.smokeGenerationActive;
             document.getElementById('progress-stages').style.display = 'none';
             document.getElementById('progress-log').innerHTML = '';
             document.getElementById('progress-bar-fill').style.width = '0%';
