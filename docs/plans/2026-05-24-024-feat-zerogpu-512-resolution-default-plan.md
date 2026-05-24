@@ -1,7 +1,7 @@
 ---
 title: "feat: ZeroGPU default 512 resolution in hosted UI"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-020-feat-space-smoke-zerogpu-generate-plan.md
 ---

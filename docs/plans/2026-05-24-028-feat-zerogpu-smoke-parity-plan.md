@@ -1,7 +1,7 @@
 ---
 title: "feat: ZeroGPU smoke parity and rembg observability"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-027-feat-zerogpu-lite-rembg-default-plan.md
 ---

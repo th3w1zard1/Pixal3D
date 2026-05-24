@@ -50,11 +50,9 @@ fi
 
 cat <<'EOF'
 
-Browser E2E (manual — run before --generate in the same session):
-  1. Open the Space URL in a browser
-  2. Confirm no viewer error overlay on load
-  3. Click gallery sample assets/images/0_img.png (512 resolution)
-  4. Start Generation → expect step 3 GLB or explicit quota/error message
+Browser E2E (run before --generate in the same session):
+  ./scripts/browser_glb_smoke.sh [--url URL]
+  Or manually: gallery assets/images/0_img.png (512) → Generate → step 3 GLB or quota/error
 
 EOF
 

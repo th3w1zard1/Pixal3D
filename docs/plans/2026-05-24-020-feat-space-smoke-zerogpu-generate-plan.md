@@ -1,7 +1,7 @@
 ---
 title: "feat: ZeroGPU-safe space_smoke generate path"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-016-feat-space-smoke-script-plan.md
 ---

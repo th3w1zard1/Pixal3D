@@ -1,7 +1,7 @@
 ---
 title: "feat: ZeroGPU cold-start hub prefetch and GPU budget"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-028-feat-zerogpu-smoke-parity-plan.md
 ---

@@ -1,7 +1,7 @@
 ---
 title: "feat: ZeroGPU GLB success UX and textured extract"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-032-feat-recovery-closure-smoke-docs-plan.md
 ---

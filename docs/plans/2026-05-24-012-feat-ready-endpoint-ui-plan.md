@@ -1,7 +1,7 @@
 ---
 title: "feat: /ready-aware runtime card and Generate gating"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-23-011-feat-cpu-zerogpu-transition-plan.md
 ---

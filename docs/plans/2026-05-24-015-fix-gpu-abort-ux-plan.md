@@ -1,7 +1,7 @@
 ---
 title: "fix: ZeroGPU cold-start GPU abort UX and E2E verification record"
 type: fix
-status: active
+status: completed
 date: 2026-05-24
 origin: .cursor/plans/pixal3d_space_recovery_5b65d5a8.plan.md
 verified_e2e: "2026-05-24 anonymous cold generate → GPU task aborted (~139s); UX mitigations shipped"

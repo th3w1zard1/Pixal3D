@@ -1723,6 +1723,7 @@
         async function handleImageUpload(file) {
             currentFile = file;
             preprocessedFile = null;
+            document.body.dataset.smokeFileReady = 'true';
             document.getElementById('generate-btn').disabled = true;
             await new Promise((resolve) => {
                 const reader = new FileReader();
@@ -1759,7 +1760,11 @@
                 btn.title = health?.message || 'Waiting for GPU hardware. This page reloads automatically when ZeroGPU is ready.';
                 return;
             }
-            if (health?.runtime_mode !== 'zerogpu' && !lastRuntimeReady) {
+            if (
+                health
+                && health.runtime_mode !== 'zerogpu'
+                && !lastRuntimeReady
+            ) {
                 btn.disabled = true;
                 btn.title = health?.message || 'Models are still warming. Generate unlocks when the runtime reports ready.';
                 return;
@@ -2084,6 +2089,7 @@
             });
             viewer.style.visibility = 'visible';
             setStep(targetStep);
+            document.body.dataset.smokeGlbReady = 'true';
             return viewer;
         }
 
@@ -2096,7 +2102,11 @@
                 );
                 return;
             }
-            if (lastRuntimeHealth?.runtime_mode !== 'zerogpu' && !lastRuntimeReady) {
+            if (
+                lastRuntimeHealth
+                && lastRuntimeHealth.runtime_mode !== 'zerogpu'
+                && !lastRuntimeReady
+            ) {
                 showToast(
                     lastRuntimeHealth?.message || 'Models are still warming. Wait for the runtime to report ready.',
                     5200
@@ -2106,6 +2116,7 @@
 
             // Clear old preview frames and 3D result
             generationResult = null;
+            delete document.body.dataset.smokeGlbReady;
             document.getElementById('frame-container').innerHTML = '';
             document.getElementById('angle-slider').value = 0;
             document.getElementById('angle-display').textContent = '00';

@@ -1,7 +1,7 @@
 ---
 title: "feat: CI repo parity warning on main push"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-021-feat-github-hf-parity-check-plan.md
 ---
