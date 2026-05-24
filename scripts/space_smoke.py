@@ -23,6 +23,7 @@ HTML_MARKERS = (
     "GPU slice ended early",
     "lastRuntimeReady",
     "ZeroGPU cold start",
+    "512 (Fast / ZeroGPU)",
 )
 
 
