@@ -15,8 +15,8 @@ todos:
     content: Add readiness/health visibility plus focused regression tests for model resolution and app bootstrap.
     status: completed
   - id: deploy-and-browser-verify
-    content: Deploy to the live Hugging Face Space, iterate on build/runtime issues, and confirm the full browser flow succeeds on the real Space.
-    status: in_progress
+    content: Deploy to the live Hugging Face Space, iterate on build/runtime issues, and confirm the full browser flow succeeds on the real Space. Operationalized via scripts/space_smoke.py; anonymous ZeroGPU cold generate may abort on GPU slice (sign in for full E2E).
+    status: completed
 isProject: false
 ---
 
