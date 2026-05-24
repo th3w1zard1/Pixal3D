@@ -1,7 +1,7 @@
 ---
 title: "fix: Align README with CI smoke and HF auto-sync"
 type: fix
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-018-feat-hf-auto-sync-smoke-plan.md
 ---

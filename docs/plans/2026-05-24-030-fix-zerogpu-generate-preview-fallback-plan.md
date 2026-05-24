@@ -1,7 +1,7 @@
 ---
 title: "fix: GLB fallback when CUDA mesh preview unavailable"
 type: fix
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-029-feat-zerogpu-cold-prefetch-plan.md
 ---

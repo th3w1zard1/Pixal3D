@@ -1,7 +1,7 @@
 ---
 title: "feat: Auto-sync HF Space on main push with post-sync smoke"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-017-feat-ci-space-smoke-sync-plan.md
 ---

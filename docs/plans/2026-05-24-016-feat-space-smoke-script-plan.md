@@ -1,7 +1,7 @@
 ---
 title: "feat: Agent-friendly Space smoke script"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-015-fix-gpu-abort-ux-plan.md
 ---

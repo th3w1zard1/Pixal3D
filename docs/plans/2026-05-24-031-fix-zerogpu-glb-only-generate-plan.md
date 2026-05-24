@@ -1,7 +1,7 @@
 ---
 title: "fix: ZeroGPU generate exports GLB without preview frames"
 type: fix
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-030-fix-zerogpu-generate-preview-fallback-plan.md
 ---

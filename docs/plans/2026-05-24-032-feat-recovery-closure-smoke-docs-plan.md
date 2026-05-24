@@ -1,7 +1,7 @@
 ---
 title: "feat: recovery closure — smoke GLB assert and operator docs"
 type: feat
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/plans/2026-05-24-031-fix-zerogpu-glb-only-generate-plan.md
 ---
