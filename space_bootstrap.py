@@ -2,6 +2,8 @@ import copy
 import json
 import os
 import tempfile
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -11,6 +13,52 @@ DEFAULT_REMBG_MODEL = "ZhengPeng7/BiRefNet"
 DEFAULT_REMBG_FALLBACKS = ("ZhengPeng7/BiRefNet_lite",)
 ZEROGPU_REMBG_MODEL = "ZhengPeng7/BiRefNet_lite"
 ZEROGPU_REMBG_FALLBACKS = ("ZhengPeng7/BiRefNet",)
+DEFAULT_IMAGE_COND_MODEL = "camenduru/dinov3-vitl16-pretrain-lvd1689m"
+DEFAULT_MOGE_MODEL = "Ruicheng/moge-2-vitl"
+DEFAULT_PIPELINE_REPO = "TencentARC/Pixal3D-T"
+
+
+class HubPrefetchState:
+    def __init__(self) -> None:
+        self.state = "pending"
+        self.message = "Hub artifacts have not started prefetching."
+        self.updated_at = time.time()
+        self._lock = threading.Lock()
+
+    def mark_running(self, message: str = "Prefetching Hub artifacts on CPU."):
+        with self._lock:
+            self.state = "running"
+            self.message = message
+            self.updated_at = time.time()
+
+    def mark_ready(self, message: str = "Hub artifacts prefetched."):
+        with self._lock:
+            self.state = "ready"
+            self.message = message
+            self.updated_at = time.time()
+
+    def mark_error(self, error: Exception | str):
+        with self._lock:
+            self.state = "error"
+            self.message = str(error)
+            self.updated_at = time.time()
+
+    def mark_skipped(self, message: str = "Hub prefetch not enabled for this runtime."):
+        with self._lock:
+            self.state = "skipped"
+            self.message = message
+            self.updated_at = time.time()
+
+    def snapshot(self) -> dict[str, object]:
+        with self._lock:
+            return {
+                "hub_prefetch_state": self.state,
+                "hub_prefetch_message": self.message,
+                "hub_prefetch_updated_at": self.updated_at,
+            }
+
+
+hub_prefetch_state = HubPrefetchState()
 
 
 @dataclass(frozen=True)
@@ -35,6 +83,104 @@ def _is_zerogpu_hosted_space(env: dict[str, str]) -> bool:
         return False
     accelerator = (env.get("ACCELERATOR") or "").strip().lower()
     return accelerator.startswith("zero")
+
+
+def _is_hosted_space(env: dict[str, str]) -> bool:
+    return bool(env.get("SPACE_ID"))
+
+
+def apply_hosted_space_env_defaults(env: dict[str, str] | None = None) -> None:
+    env = env or os.environ
+    if _is_zerogpu_hosted_space(env):
+        env.setdefault("PIXAL3D_LOW_VRAM", "1")
+
+
+def _should_prefetch_hub_artifacts(env: dict[str, str]) -> bool:
+    if not _is_hosted_space(env):
+        return False
+    return env.get("PIXAL3D_HUB_PREFETCH", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _download_trellis_model_weights(model_path: str, runtime_config: RuntimeConfig) -> None:
+    from huggingface_hub import hf_hub_download
+
+    if os.path.exists(f"{model_path}.json") and os.path.exists(f"{model_path}.safetensors"):
+        return
+
+    path_parts = model_path.split("/")
+    if len(path_parts) < 2:
+        return
+    repo_id = f"{path_parts[0]}/{path_parts[1]}"
+    model_name = "/".join(path_parts[2:]) if len(path_parts) > 2 else ""
+    hub_kwargs = build_hf_hub_kwargs(runtime_config)
+    if model_name:
+        hf_hub_download(repo_id, f"{model_name}.json", **hub_kwargs)
+        hf_hub_download(repo_id, f"{model_name}.safetensors", **hub_kwargs)
+
+
+def _snapshot_download_repo(repo_id: str, runtime_config: RuntimeConfig) -> None:
+    from huggingface_hub import snapshot_download
+
+    snapshot_download(repo_id, **build_hf_hub_kwargs(runtime_config, include_revision=False))
+
+
+def prefetch_hub_artifacts(
+    runtime_config: RuntimeConfig | None = None,
+    env: dict[str, str] | None = None,
+) -> str | None:
+    env = env or os.environ
+    runtime_config = runtime_config or build_runtime_config(env)
+    hub_prefetch_state.mark_running()
+    try:
+        pipeline_dir = prepare_pipeline_directory(DEFAULT_PIPELINE_REPO, runtime_config)
+        config = json.loads((Path(pipeline_dir) / "pipeline.json").read_text(encoding="utf-8"))
+        for model_path in config.get("args", {}).get("models", {}).values():
+            if isinstance(model_path, str):
+                _download_trellis_model_weights(model_path, runtime_config)
+
+        for repo_id in (
+            runtime_config.rembg_model,
+            *runtime_config.rembg_fallback_models,
+            DEFAULT_IMAGE_COND_MODEL,
+            DEFAULT_MOGE_MODEL,
+        ):
+            if repo_id:
+                _snapshot_download_repo(repo_id, runtime_config)
+
+        hub_prefetch_state.mark_ready()
+        return pipeline_dir
+    except Exception as exc:
+        hub_prefetch_state.mark_error(exc)
+        raise
+
+
+def start_hub_prefetch_thread(
+    runtime_config: RuntimeConfig | None = None,
+    env: dict[str, str] | None = None,
+    on_pipeline_dir: Callable[[str], None] | None = None,
+) -> threading.Thread | None:
+    env = env or os.environ
+    runtime_config = runtime_config or build_runtime_config(env)
+    if not _should_prefetch_hub_artifacts(env):
+        hub_prefetch_state.mark_skipped()
+        return None
+
+    def _run() -> None:
+        try:
+            pipeline_dir = prefetch_hub_artifacts(runtime_config, env)
+            if pipeline_dir and on_pipeline_dir:
+                on_pipeline_dir(pipeline_dir)
+        except Exception:
+            pass
+
+    thread = threading.Thread(target=_run, daemon=True, name="hub-prefetch")
+    thread.start()
+    return thread
 
 
 def _default_rembg_model(env: dict[str, str]) -> str:

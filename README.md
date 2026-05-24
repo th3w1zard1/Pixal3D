@@ -36,6 +36,8 @@ In short, the project is prioritizing dependable workflow and deployment hygiene
 - Default background-removal model: `ZhengPeng7/BiRefNet`
 - Default fallback model: `ZhengPeng7/BiRefNet_lite`
 - On hosted ZeroGPU (`ACCELERATOR=zero*`), the Space defaults to `BiRefNet_lite` for faster cold warmup unless `PIXAL3D_REMBG_MODEL` is set
+- On hosted ZeroGPU, `PIXAL3D_LOW_VRAM=1` is enabled by default so MoGe and env maps stay on CPU until needed
+- Hosted Spaces prefetch Hub weights on CPU in the background (`hub_prefetch_state` on `/health`); set `PIXAL3D_HUB_PREFETCH=0` to disable
 - Health endpoint: `/health`
 - Readiness endpoint: `/ready` returns `200` only after the GPU runtime is actually primed
 
@@ -87,7 +89,7 @@ python3 -m venv .venv
 .venv/bin/python scripts/space_smoke.py --generate
 ```
 
-On hosted ZeroGPU, `--generate` skips `/warmup_runtime` and calls `/generate_3d` directly (same as the browser UI). Check `/health` for `rembg_model` to confirm the active rembg default after deploy.
+On hosted ZeroGPU, `--generate` skips `/warmup_runtime` and calls `/generate_3d` directly (same as the browser UI). The first cold generate requests a 120s ZeroGPU slice while the pipeline is unloaded; warm runs stay on the 60s cap. Check `/health` for `rembg_model`, `low_vram`, and `hub_prefetch_state` after deploy.
 
 ### Release behavior
 
