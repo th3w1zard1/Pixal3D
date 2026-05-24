@@ -1559,31 +1559,9 @@
                 hideViewerError();
                 await refreshRuntimeStatus();
                 scheduleRuntimePollInterval(lastRuntimeHealth);
-                if (smokeTestMode && new URLSearchParams(window.location.search).has('smoke_autoload')) {
-                    void maybeAutoloadSmokeSample();
-                }
             } catch (err) {
                 console.error("Connection error:", err);
                 showToast("Connection failed. Try refreshing.");
-            }
-        }
-
-        async function maybeAutoloadSmokeSample() {
-            const params = new URLSearchParams(window.location.search);
-            const samplePath = params.get('sample') || 'assets/images/0_img.png';
-            for (let attempt = 0; attempt < 60; attempt += 1) {
-                if (lastRuntimeHealth?.runtime_mode === 'zerogpu') break;
-                await new Promise((resolve) => setTimeout(resolve, 2000));
-                await refreshRuntimeStatus();
-            }
-            try {
-                await loadSampleFromPath(samplePath);
-                if (params.has('smoke_autogen')) {
-                    await startGeneration();
-                }
-            } catch (err) {
-                console.error('Smoke autoload failed:', err);
-                window.__pixal3dSmokeSampleStatus = `err:${err?.message || String(err)}`;
             }
         }
 
