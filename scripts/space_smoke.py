@@ -24,6 +24,7 @@ HTML_MARKERS = (
     "lastRuntimeReady",
     "ZeroGPU cold start",
     "512 (Fast / ZeroGPU)",
+    'data-smoke-default-sample="assets/images/0_img.png"',
 )
 
 
@@ -184,6 +185,16 @@ def run_generate(client: Any, sample: Path, session_id: str, base_url: str = DEF
         return {
             "generate_ok": False,
             "generate_error": "generate_3d returned no glb_path or render_paths",
+            "generate_result": result,
+        }
+    if (
+        isinstance(result, dict)
+        and result.get("glb_path")
+        and result.get("extract_available") is False
+    ):
+        return {
+            "generate_ok": False,
+            "generate_error": "generate_3d returned glb_path but extract_available=false",
             "generate_result": result,
         }
     return {"generate_ok": True, "generate_result": result}
