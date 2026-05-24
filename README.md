@@ -35,6 +35,7 @@ In short, the project is prioritizing dependable workflow and deployment hygiene
 - The Space now patches the upstream `TencentARC/Pixal3D-T` pipeline config locally before model boot so it does not depend on the gated `briaai/RMBG-2.0` repo.
 - Default background-removal model: `ZhengPeng7/BiRefNet`
 - Default fallback model: `ZhengPeng7/BiRefNet_lite`
+- On hosted ZeroGPU (`ACCELERATOR=zero*`), the Space defaults to `BiRefNet_lite` for faster cold warmup unless `PIXAL3D_REMBG_MODEL` is set
 - Health endpoint: `/health`
 - Readiness endpoint: `/ready` returns `200` only after the GPU runtime is actually primed
 
