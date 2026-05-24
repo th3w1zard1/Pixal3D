@@ -127,6 +127,15 @@ def fetch_progress_snapshot(base_url: str, session_id: str, timeout: float) -> d
     return None
 
 
+def generation_has_deliverable(payload: Any) -> bool:
+    if not isinstance(payload, dict) or payload.get("error"):
+        return False
+    if payload.get("glb_path"):
+        return True
+    render_paths = payload.get("render_paths")
+    return isinstance(render_paths, dict) and bool(render_paths)
+
+
 def run_generate(client: Any, sample: Path, session_id: str, base_url: str = DEFAULT_SPACE_URL) -> dict[str, Any]:
     if not sample.is_file():
         return {"generate_ok": False, "generate_error": f"sample not found: {sample}"}
@@ -171,6 +180,12 @@ def run_generate(client: Any, sample: Path, session_id: str, base_url: str = DEF
 
     if isinstance(result, dict) and result.get("error"):
         return {"generate_ok": False, "generate_error": str(result["error"]), "generate_result": result}
+    if not generation_has_deliverable(result):
+        return {
+            "generate_ok": False,
+            "generate_error": "generate_3d returned no glb_path or render_paths",
+            "generate_result": result,
+        }
     return {"generate_ok": True, "generate_result": result}
 
 
@@ -212,8 +227,8 @@ Examples:
 `--generate` uses ZeroGPU-safe defaults (512 resolution, 5 stage steps). On hosted
 ZeroGPU it skips `/warmup_runtime` and calls `/generate_3d` directly, matching the
 browser UI. Other runtimes still warm up first. Requires gradio_client — see
-scripts/smoke-requirements.txt. Anonymous cold runs may still hit GPU slice limits;
-sign in on the Space for reliable checks.
+scripts/smoke-requirements.txt. Anonymous cold runs typically take ~2–3 minutes and return a
+geometry-only GLB on ZeroGPU; sign in on the Space for preview frames and textured extract.
         """.strip(),
     )
     parser.add_argument("--url", default=DEFAULT_SPACE_URL, help="Space base URL")

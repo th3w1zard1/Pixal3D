@@ -1458,6 +1458,8 @@ def runtime_payload() -> dict[str, object]:
         payload["zerogpu_gpu_budgets"] = {
             "warmup_seconds": ZEROGPU_WARMUP_DURATION_SECONDS,
             "generation_max_seconds": ZEROGPU_GENERATION_MAX_DURATION_SECONDS,
+            "cold_generation_max_seconds": ZEROGPU_MAX_DURATION_SECONDS,
+            "pipeline_loaded": pipeline is not None,
             "extract_seconds": ZEROGPU_EXTRACT_DURATION_SECONDS,
             "max_texture_size": ZEROGPU_MAX_TEXTURE_SIZE,
             "max_stage_steps": ZEROGPU_MAX_STAGE_STEPS,
