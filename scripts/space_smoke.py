@@ -110,7 +110,24 @@ def run_warmup(client: Any, session_id: str) -> dict[str, Any]:
     return {"warmup_ok": True, "warmup_result": result}
 
 
-def run_generate(client: Any, sample: Path, session_id: str) -> dict[str, Any]:
+def format_client_error(exc: Exception) -> str:
+    message = str(exc).strip()
+    if message and message not in {"RuntimeError", "Error"}:
+        return message
+    return f"{type(exc).__name__}: {message or 'no message from upstream (check /progress)'}"
+
+
+def fetch_progress_snapshot(base_url: str, session_id: str, timeout: float) -> dict[str, Any] | None:
+    status, body, _err = _fetch_json(
+        f"{base_url.rstrip('/')}/progress?session_id={session_id}",
+        timeout,
+    )
+    if status == 200 and isinstance(body, dict):
+        return body
+    return None
+
+
+def run_generate(client: Any, sample: Path, session_id: str, base_url: str = DEFAULT_SPACE_URL) -> dict[str, Any]:
     if not sample.is_file():
         return {"generate_ok": False, "generate_error": f"sample not found: {sample}"}
     try:
@@ -144,7 +161,13 @@ def run_generate(client: Any, sample: Path, session_id: str) -> dict[str, Any]:
             api_name="/generate_3d",
         )
     except Exception as exc:  # noqa: BLE001
-        return {"generate_ok": False, "generate_error": str(exc)}
+        progress = fetch_progress_snapshot(base_url, session_id, 30.0)
+        error = format_client_error(exc)
+        if progress:
+            stage = progress.get("stage")
+            if stage:
+                error = f"{error} (progress stage: {stage})"
+        return {"generate_ok": False, "generate_error": error, "progress": progress}
 
     if isinstance(result, dict) and result.get("error"):
         return {"generate_ok": False, "generate_error": str(result["error"]), "generate_result": result}
@@ -173,7 +196,7 @@ def run_warmup_and_generate(base_url: str, sample: Path, session_id: str) -> dic
         warmup = run_warmup(client, session_id)
         if not warmup.get("warmup_ok"):
             return {**warmup, "generate_ok": False}
-    generate = run_generate(client, sample, session_id)
+    generate = run_generate(client, sample, session_id, base_url=base)
     return {**warmup, **generate}
 
 

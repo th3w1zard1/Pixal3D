@@ -275,9 +275,11 @@ def resolve_generation_plan(
     cuda_available: bool | None = None,
 ) -> dict[str, object]:
     device = resolve_execution_device(env, cuda_available)
+    from trellis2.representations.mesh.base import cuda_mesh_operators_available
+
     return {
         "execution_device": device,
-        "render_preview": device == "cuda",
+        "render_preview": device == "cuda" and cuda_mesh_operators_available(),
         "runtime_mode": resolve_runtime_mode(env, cuda_available),
     }
 
@@ -544,7 +546,9 @@ def move_runtime_to(device: str | torch.device) -> None:
     current_runtime_device = target
 
 
-def export_basic_glb(mesh, session_id: str = "") -> str:
+def _is_mesh_operator_error(exc: BaseException) -> bool:
+    message = str(exc)
+    return "CUDA mesh operators" in message or "requires CUDA mesh" in message
     import trimesh
 
     trimesh_mesh = trimesh.Trimesh(
@@ -1192,43 +1196,62 @@ def _generate_3d_impl(
     }
 
     if render_preview:
-        _update_progress("Rendering views", 0, 1)
-        mesh.simplify(16777216)
-        cam_dist = camera_params["distance"]
-        near = max(0.01, cam_dist - 2.0)
-        far = cam_dist + 10.0
-        renders = render_utils.render_proj_aligned_video(
-            mesh,
-            camera_angle_x=camera_params["camera_angle_x"],
-            distance=cam_dist,
-            resolution=1024,
-            num_frames=STEPS,
-            envmap=envmap,
-            near=near,
-            far=far,
-        )
-        _update_progress("Rendering views", 1, 1)
+        try:
+            _update_progress("Rendering views", 0, 1)
+            mesh.simplify(16777216)
+            cam_dist = camera_params["distance"]
+            near = max(0.01, cam_dist - 2.0)
+            far = cam_dist + 10.0
+            renders = render_utils.render_proj_aligned_video(
+                mesh,
+                camera_angle_x=camera_params["camera_angle_x"],
+                distance=cam_dist,
+                resolution=1024,
+                num_frames=STEPS,
+                envmap=envmap,
+                near=near,
+                far=far,
+            )
+            _update_progress("Rendering views", 1, 1)
 
-        render_files = {}
-        for mode_key, frames in renders.items():
-            mode_files = []
-            for i, frame in enumerate(frames):
-                p = os.path.abspath(
-                    os.path.join(
-                        TMP_DIR, f"render_{mode_key}_{i}_{int(time.time() * 1000)}.jpg"
+            render_files = {}
+            for mode_key, frames in renders.items():
+                mode_files = []
+                for i, frame in enumerate(frames):
+                    p = os.path.abspath(
+                        os.path.join(
+                            TMP_DIR, f"render_{mode_key}_{i}_{int(time.time() * 1000)}.jpg"
+                        )
                     )
-                )
-                Image.fromarray(frame).save(p, quality=85)
-                mode_files.append(p)
-            render_files[mode_key] = mode_files
+                    Image.fromarray(frame).save(p, quality=85)
+                    mode_files.append(p)
+                render_files[mode_key] = mode_files
 
-        result.update(
-            {
-                "render_paths": render_files,
-                "preview_available": True,
-                "extract_available": True,
-            }
-        )
+            result.update(
+                {
+                    "render_paths": render_files,
+                    "preview_available": True,
+                    "extract_available": True,
+                }
+            )
+        except RuntimeError as exc:
+            if not _is_mesh_operator_error(exc):
+                raise
+            _update_progress("Exporting GLB (preview unavailable)", 0, 1)
+            glb_path = export_basic_glb(mesh, session_id=session_id)
+            _update_progress("Exporting GLB (preview unavailable)", 1, 1)
+            result.update(
+                {
+                    "render_paths": {},
+                    "preview_available": False,
+                    "extract_available": False,
+                    "glb_path": os.path.abspath(glb_path),
+                    "message": (
+                        "Preview rendering requires CUDA mesh operators; "
+                        "exported a geometry-only GLB instead."
+                    ),
+                }
+            )
     else:
         _update_progress("Exporting CPU GLB", 0, 1)
         glb_path = export_basic_glb(mesh, session_id=session_id)
@@ -1399,6 +1422,9 @@ def runtime_payload() -> dict[str, object]:
     payload["warmup_on_start"] = runtime_config.warmup_on_start
     payload["rembg_model"] = runtime_config.rembg_model
     payload["low_vram"] = _runtime_low_vram_enabled()
+    from trellis2.representations.mesh.base import cuda_mesh_operators_available
+
+    payload["cuda_mesh_operators"] = cuda_mesh_operators_available()
     payload.update(hub_prefetch_state.snapshot())
     payload["pipeline_resolved"] = resolved_pipeline_dir is not None
     payload["current_runtime_device"] = current_runtime_device
