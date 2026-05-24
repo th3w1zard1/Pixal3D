@@ -1,7 +1,7 @@
 ---
 title: "fix: reliable smoke sample load and preview markers"
 type: fix
-status: active
+status: completed
 date: 2026-05-24
 origin: docs/SPACE_RECOVERY.md
 supersedes: docs/plans/2026-05-24-047-fix-smoke-skip-preprocess-plan.md

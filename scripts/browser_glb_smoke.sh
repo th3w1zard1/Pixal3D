@@ -7,28 +7,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 SPACE_URL="${PIXAL3D_SPACE_URL:-https://th3w1zard1-pixal3d.hf.space/}"
-if [[ "$SPACE_URL" != *smoke=1* ]]; then
-  if [[ "$SPACE_URL" == *"?"* ]]; then
-    SPACE_URL="${SPACE_URL}&smoke=1"
-  else
-    SPACE_URL="${SPACE_URL%/}?smoke=1"
-  fi
-fi
-SAMPLE_SELECTOR=".example-item img[src*='0_img']"
+
 CLIENT_WAIT_SEC="${BROWSER_SMOKE_CLIENT_WAIT_SEC:-120}"
-PREVIEW_WAIT_SEC="${BROWSER_SMOKE_PREVIEW_WAIT_SEC:-150}"
 GENERATE_WAIT_SEC="${BROWSER_SMOKE_GENERATE_WAIT_SEC:-300}"
 HEADED=0
 
 usage() {
   cat <<'EOF'
-Usage: scripts/browser_glb_smoke.sh [--url URL] [--headed] [--preview-wait SEC] [--generate-wait SEC]
+Usage: scripts/browser_glb_smoke.sh [--url URL] [--headed] [--generate-wait SEC]
 
-Automates browser gallery -> Generate -> GLB on the hosted Space (agent-browser required).
-Exit 0 when GLB is ready (body data-smoke-glb-ready, or step 3 + export visible); 1 on viewer error;
-2 on timeout; 3 on setup failure.
+Opens the Space with ?smoke=1&autoload=1&autogen=1 so the page loads the default
+sample and starts generation in-process (agent-browser does not keep async eval alive).
 
-Cold ZeroGPU runs often need 300s+ wall clock. Run before verify_hosted_space.sh --generate in one session.
+Exit 0 when GLB is ready; 1 on viewer error; 2 on timeout; 3 on setup failure.
 EOF
 }
 
@@ -39,10 +30,6 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --headed) HEADED=1; shift ;;
-    --preview-wait)
-      PREVIEW_WAIT_SEC="${2:?missing seconds}"
-      shift 2
-      ;;
     --generate-wait)
       GENERATE_WAIT_SEC="${2:?missing seconds}"
       shift 2
@@ -51,6 +38,22 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; usage >&2; exit 3 ;;
   esac
 done
+
+append_query() {
+  local key="$1"
+  local val="$2"
+  if [[ "$SPACE_URL" == *"${key}="* ]]; then
+    return
+  fi
+  if [[ "$SPACE_URL" == *"?"* ]]; then
+    SPACE_URL="${SPACE_URL}&${key}=${val}"
+  else
+    SPACE_URL="${SPACE_URL%/}?${key}=${val}"
+  fi
+}
+append_query "smoke" "1"
+append_query "autoload" "1"
+append_query "autogen" "1"
 
 if ! command -v agent-browser >/dev/null 2>&1; then
   echo "browser_glb_smoke: agent-browser not installed (see ce-setup / agent-browser docs)" >&2
@@ -108,118 +111,19 @@ for ((i = 0; i < CLIENT_WAIT_SEC; i += 3)); do
   fi
   sleep 3
 done
-
 if [[ "$client_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: Gradio client not ready (__pixal3dRunGeneration missing)" >&2
+  echo "browser_glb_smoke: Gradio client not ready" >&2
   exit 3
 fi
 
-echo "==> Waiting for ZeroGPU runtime (max ${CLIENT_WAIT_SEC}s, skip cpu→gpu reload race)"
-runtime_ok=0
-for ((i = 0; i < CLIENT_WAIT_SEC; i += 3)); do
-  if ab_bool "document.body?.dataset?.runtimeMode === 'zerogpu'"; then
-    runtime_ok=1
-    break
-  fi
-  sleep 3
-done
-if [[ "$runtime_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: ZeroGPU runtime not reported yet (data-runtime-mode)" >&2
-  exit 3
-fi
-
-if ! ab wait ".example-item" 30000 2>/dev/null; then
-  echo "browser_glb_smoke: gallery did not load (.example-item timeout)" >&2
-  exit 3
-fi
-
-sample_ready_js="document.body?.dataset?.smokeSampleLoad === 'done'"
-
-echo "==> Loading default gallery sample (max ${PREVIEW_WAIT_SEC}s)"
-preview_ok=0
-if ab_bool "typeof window.__pixal3dLoadSamplePath === 'function'"; then
-  ab eval "window.__pixal3dLoadSamplePath('assets/images/0_img.png').catch((e) => { window.__pixal3dSmokeSampleStatus = 'err:' + (e?.message || String(e)); }); 'started'" >/dev/null 2>&1 || true
-else
-  echo "browser_glb_smoke: __pixal3dLoadSamplePath missing" >&2
-  exit 3
-fi
-
-for ((i = 0; i < PREVIEW_WAIT_SEC; i += 2)); do
-  status="$(ab_text "window.__pixal3dSmokeSampleStatus || document.body?.dataset?.smokeSampleLoad || ''")"
-  load_err="$(ab_text "document.body?.dataset?.smokeLoadError || ''")"
-  if [[ -n "$load_err" ]]; then
-    echo "browser_glb_smoke: sample load error (${load_err})" >&2
-    exit 2
-  fi
-  if [[ "$status" == err:* ]]; then
-    echo "browser_glb_smoke: sample load failed (${status})" >&2
-    exit 2
-  fi
-  if [[ "$status" == "done" ]] || ab_bool "$sample_ready_js"; then
-    preview_ok=1
-    echo "browser_glb_smoke: load status=${status:-done}"
-    break
-  fi
-  sleep 2
-done
-
-if [[ "$preview_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: clicking gallery sample (last resort)" >&2
-  ab eval "document.querySelector('.example-item img[src*=\"0_img\"]')?.closest('.example-item')?.click(); 'clicked'" >/dev/null 2>&1 || true
-  ab click "$SAMPLE_SELECTOR" 2>/dev/null || true
-  for ((i = 0; i < 60; i += 2)); do
-    status="$(ab_text "window.__pixal3dSmokeSampleStatus || document.body?.dataset?.smokeSampleLoad || ''")"
-    if [[ "$status" == "done" ]] || ab_bool "$sample_ready_js"; then
-      preview_ok=1
-      break
-    fi
-    sleep 2
-  done
-fi
-
-if [[ "$preview_ok" -eq 1 ]]; then
-  echo "==> Sample ready for generation"
-fi
-
-if [[ "$preview_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: sample file not ready (__pixal3dSmokeSampleStatus)" >&2
-  exit 2
-fi
-
-if ! ab_bool "typeof window.__pixal3dRunGeneration === 'function'"; then
-  echo "browser_glb_smoke: generation hook missing before start" >&2
-  exit 3
-fi
-
-echo "==> Starting generation (max ${GENERATE_WAIT_SEC}s for GLB or error)"
-ab eval "window.__pixal3dRunGeneration(); 'started'" >/dev/null 2>&1 || true
-
-generation_started=0
-for ((i = 0; i < 60; i += 3)); do
-  if ab_bool "document.body?.dataset?.smokeGenerationActive === 'true'"; then
-    generation_started=1
-    break
-  fi
-  if ab_bool "$glb_ready_js"; then
-    generation_started=1
-    break
-  fi
-  sleep 3
-done
-
-if [[ "$generation_started" -ne 1 ]]; then
-  if ab_bool "document.body?.dataset?.smokeGenerationRequested === 'true'"; then
-    abort="$(ab_text "document.body?.dataset?.smokeGenerationAbort || 'unknown'")"
-    echo "browser_glb_smoke: generation aborted before loading (${abort})" >&2
-  else
-    echo "browser_glb_smoke: Generate did not start (hook did not run startGeneration)" >&2
-  fi
-  err_hint="$(ab_text "document.getElementById('viewer-error-message')?.textContent?.trim() || ''")"
-  [[ -n "$err_hint" ]] && echo "browser_glb_smoke: viewer message: ${err_hint}" >&2
-  exit 2
-fi
-
+echo "==> Waiting for autoload + generation (max ${GENERATE_WAIT_SEC}s)"
 for ((i = 0; i < GENERATE_WAIT_SEC; i += 5)); do
+  load_status="$(ab_text "window.__pixal3dSmokeSampleStatus || ''")"
+  if [[ "$load_status" == err:* ]]; then
+    echo "browser_glb_smoke: autoload failed (${load_status})" >&2
+    exit 2
+  fi
+
   if ab_bool "document.getElementById('viewer-error')?.classList.contains('show')"; then
     err_msg="$(ab_text "document.getElementById('viewer-error-message')?.textContent?.trim() || ''")"
     echo "browser_glb_smoke: viewer error: ${err_msg}" >&2
@@ -235,12 +139,20 @@ for ((i = 0; i < GENERATE_WAIT_SEC; i += 5)); do
     exit 0
   fi
 
+  if ab_bool "document.body?.dataset?.smokeGenerationActive === 'true'"; then
+    echo "… generation active (${i}s)"
+  elif [[ "$(ab_text "window.__pixal3dSmokeSampleStatus || ''")" == "done" ]]; then
+    echo "… sample loaded, waiting for GLB (${i}s)"
+  fi
+
   sleep 5
 done
 
 if ab_bool "document.getElementById('loading-overlay')?.style?.display === 'flex'"; then
-  echo "browser_glb_smoke: generation still running (try --generate-wait 360 or fresh ZeroGPU quota)" >&2
+  echo "browser_glb_smoke: generation still running (try --generate-wait 360)" >&2
 else
-  echo "browser_glb_smoke: timed out after ${GENERATE_WAIT_SEC}s with no GLB ready signal" >&2
+  abort="$(ab_text "document.body?.dataset?.smokeGenerationAbort || ''")"
+  [[ -n "$abort" ]] && echo "browser_glb_smoke: generation abort=${abort}" >&2
+  echo "browser_glb_smoke: timed out after ${GENERATE_WAIT_SEC}s" >&2
 fi
 exit 2
