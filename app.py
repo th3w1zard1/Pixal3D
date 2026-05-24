@@ -1253,11 +1253,11 @@ def _generate_3d_impl(
                 {
                     "render_paths": {},
                     "preview_available": False,
-                    "extract_available": False,
+                    "extract_available": True,
                     "glb_path": os.path.abspath(glb_path),
                     "message": (
                         "Preview rendering requires CUDA mesh operators; "
-                        "exported a geometry-only GLB instead."
+                        "exported a geometry-only GLB instead. Use Export for a textured GLB."
                     ),
                 }
             )
@@ -1274,10 +1274,11 @@ def _generate_3d_impl(
             {
                 "render_paths": {},
                 "preview_available": False,
-                "extract_available": False,
+                "extract_available": True,
                 "glb_path": os.path.abspath(glb_path),
                 "message": (
-                    "Generated a geometry-only GLB on ZeroGPU (preview frames skipped)."
+                    "Generated a geometry-only GLB on ZeroGPU (preview frames skipped). "
+                    "Use Export for a textured GLB."
                     if resolve_runtime_mode(os.environ, torch.cuda.is_available()) == "zerogpu"
                     else "Generated a geometry-only GLB on CPU hardware."
                 ),

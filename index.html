@@ -1979,7 +1979,9 @@
             document.getElementById('render-controls').style.display = (num >= 2) ? 'block' : 'none';
             document.getElementById('export-controls').style.display = (num >= 2) ? 'block' : 'none';
             const canExtract = generationResult?.extract_available !== false;
-            document.getElementById('extract-btn').style.display = (num === 2 && canExtract) ? 'flex' : 'none';
+            document.getElementById('extract-btn').style.display = (
+                canExtract && (num === 2 || (num === 3 && generationResult?.glb_path))
+            ) ? 'flex' : 'none';
             document.getElementById('download-btn').style.display = (num === 3) ? 'flex' : 'none';
         }
 
@@ -2182,7 +2184,11 @@
                 const glbUrl = getFileUrl(generationResult.glb_path);
                 await loadViewerModel(glbUrl, 3);
                 hideLoading();
-                showToast(generationResult.message || "3D asset ready!");
+                const hint = generationResult.message
+                    || (generationResult.preview_available === false && generationResult.extract_available !== false
+                        ? 'Geometry preview ready. Use Export on the right for a textured GLB.'
+                        : '3D asset ready!');
+                showToast(hint, generationResult.preview_available === false ? 6500 : 4500);
                 return;
             }
 
