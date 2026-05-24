@@ -901,6 +901,12 @@
             border-color: rgba(248, 113, 113, 0.35);
         }
 
+        .runtime-badge[data-state="cpu-standby"] {
+            background: rgba(251, 191, 36, 0.12);
+            color: #fde68a;
+            border-color: rgba(251, 191, 36, 0.35);
+        }
+
         .runtime-card p {
             font-size: 0.76rem;
             color: var(--text-dim);
@@ -1451,7 +1457,10 @@
         let currentStep = 1;
         let runtimePrimed = false;
         let lastRuntimeHealth = null;
+        let lastObservedRuntimeMode = null;
         let runtimeStatusInterval = null;
+        const RUNTIME_POLL_MS_DEFAULT = 15000;
+        const RUNTIME_POLL_MS_CPU_STANDBY = 5000;
 
         const MODES = [
             { name: "Normal", key: "normal" },
@@ -1520,7 +1529,7 @@
                 setupUI();
                 loadSamples();
                 await refreshRuntimeStatus();
-                runtimeStatusInterval = setInterval(refreshRuntimeStatus, 15000);
+                scheduleRuntimePollInterval(lastRuntimeHealth);
             } catch (err) {
                 console.error("Connection error:", err);
                 showToast("Connection failed. Try refreshing.");
@@ -1706,8 +1715,46 @@
                 };
                 reader.readAsDataURL(file);
             });
-            document.getElementById('generate-btn').disabled = false;
+            updateGenerateAvailability(lastRuntimeHealth);
             void runPreprocess(file);
+        }
+
+        function isCpuStandby(health) {
+            if (!health) return false;
+            return health.runtime_mode === 'cpu' || health.state === 'cpu-standby';
+        }
+
+        function isGenerationBusy() {
+            const overlay = document.getElementById('loading-overlay');
+            return overlay && overlay.style.display === 'flex';
+        }
+
+        function updateGenerateAvailability(health) {
+            const btn = document.getElementById('generate-btn');
+            if (!btn || isGenerationBusy()) return;
+            if (isCpuStandby(health)) {
+                btn.disabled = true;
+                btn.title = health?.message || 'Waiting for GPU hardware. This page reloads automatically when ZeroGPU is ready.';
+                return;
+            }
+            btn.title = '';
+            btn.disabled = !currentFile;
+        }
+
+        function scheduleRuntimePollInterval(health) {
+            const ms = isCpuStandby(health) ? RUNTIME_POLL_MS_CPU_STANDBY : RUNTIME_POLL_MS_DEFAULT;
+            if (runtimeStatusInterval) clearInterval(runtimeStatusInterval);
+            runtimeStatusInterval = setInterval(refreshRuntimeStatus, ms);
+        }
+
+        function handleRuntimeModeTransition(health) {
+            const mode = health?.runtime_mode || null;
+            const prev = lastObservedRuntimeMode;
+            lastObservedRuntimeMode = mode;
+            if (prev == null || prev !== 'cpu' || mode !== 'zerogpu') return;
+            if (isGenerationBusy() || isPreprocessing) return;
+            showToast('ZeroGPU runtime is ready. Reloading in 3 seconds…', 5000);
+            setTimeout(() => location.reload(), 3000);
         }
 
         async function refreshRuntimeStatus() {
@@ -1723,17 +1770,26 @@
                     pending: 'Cold',
                     initializing: 'Warming',
                     ready: 'Ready',
-                    error: 'Error'
+                    error: 'Error',
+                    'cpu-standby': 'CPU Standby'
                 }[state] || 'Live';
 
                 badge.dataset.state = state;
                 badge.textContent = stateLabel;
-                text.textContent = data.ready
-                    ? 'Runtime is hot. Generation should start immediately unless the hosted queue is saturated.'
-                    : (data.message || 'The hosted runtime is cold. Generate will prime the model stack automatically.');
+                if (isCpuStandby(data)) {
+                    text.textContent = data.message
+                        || 'This Space is on CPU standby while GPU hardware starts. Generate unlocks after ZeroGPU is ready.';
+                } else {
+                    text.textContent = data.ready
+                        ? 'Runtime is hot. Generation should start immediately unless the hosted queue is saturated.'
+                        : (data.message || 'The hosted runtime is cold. Generate will prime the model stack automatically.');
+                }
                 runtimePrimed = !!data.ready;
                 applyZeroGpuHostedDefaults(data);
                 updateRuntimeBudgetHint(data);
+                updateGenerateAvailability(data);
+                handleRuntimeModeTransition(data);
+                scheduleRuntimePollInterval(data);
             } catch (err) {
                 console.debug('Runtime status probe failed:', err);
             }
@@ -1965,6 +2021,13 @@
 
         async function startGeneration() {
             if (!currentFile) return;
+            if (isCpuStandby(lastRuntimeHealth)) {
+                showToast(
+                    lastRuntimeHealth?.message || 'Waiting for GPU hardware. This page reloads automatically when ZeroGPU is ready.',
+                    5200
+                );
+                return;
+            }
 
             // Clear old preview frames and 3D result
             generationResult = null;
