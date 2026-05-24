@@ -2095,10 +2095,19 @@
             return viewer;
         }
 
+        function markSmokeGenerationAbort(reason) {
+            document.body.dataset.smokeGenerationAbort = reason;
+        }
+
         async function startGeneration() {
             document.body.dataset.smokeGenerationRequested = 'true';
-            if (!currentFile) return;
+            delete document.body.dataset.smokeGenerationAbort;
+            if (!currentFile) {
+                markSmokeGenerationAbort('no-file');
+                return;
+            }
             if (isCpuStandby(lastRuntimeHealth)) {
+                markSmokeGenerationAbort('cpu-standby');
                 showToast(
                     lastRuntimeHealth?.message || 'Waiting for GPU hardware. This page reloads automatically when ZeroGPU is ready.',
                     5200
@@ -2110,6 +2119,7 @@
                 && lastRuntimeHealth.runtime_mode !== 'zerogpu'
                 && !lastRuntimeReady
             ) {
+                markSmokeGenerationAbort('warming');
                 showToast(
                     lastRuntimeHealth?.message || 'Models are still warming. Wait for the runtime to report ready.',
                     5200
