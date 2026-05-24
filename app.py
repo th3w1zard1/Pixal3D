@@ -1375,6 +1375,7 @@ def runtime_payload() -> dict[str, object]:
     cuda_available = torch.cuda.is_available()
     runtime_mode = resolve_runtime_mode(os.environ, cuda_available)
     payload["warmup_on_start"] = runtime_config.warmup_on_start
+    payload["rembg_model"] = runtime_config.rembg_model
     payload["pipeline_resolved"] = resolved_pipeline_dir is not None
     payload["current_runtime_device"] = current_runtime_device
     payload["runtime_mode"] = runtime_mode
