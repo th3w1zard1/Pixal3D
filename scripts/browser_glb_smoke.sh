@@ -16,8 +16,8 @@ usage() {
   cat <<'EOF'
 Usage: scripts/browser_glb_smoke.sh [--url URL] [--headed] [--preview-wait SEC] [--generate-wait SEC]
 
-Uses ?smoke=1 and one in-page async eval for sample load, generation, and GLB polling
-(agent-browser loses page state across separate evals after a long call).
+Uses ?smoke=1 and repeated short __pixal3dSmokeAdvance() ticks (agent-browser CDP safe).
+Exit 0 when GLB ready; 1 on viewer error; 2 on timeout; 3 on setup failure.
 EOF
 }
 
@@ -95,14 +95,14 @@ sleep 6
 echo "==> Waiting for Gradio client (max ${CLIENT_WAIT_SEC}s)"
 client_ok=0
 for ((i = 0; i < CLIENT_WAIT_SEC; i += 3)); do
-  if ab_bool "window.__pixal3dClientReady === true && typeof window.__pixal3dRunGeneration === 'function'"; then
+  if ab_bool "window.__pixal3dClientReady === true && typeof window.__pixal3dSmokeAdvance === 'function'"; then
     client_ok=1
     break
   fi
   sleep 3
 done
 if [[ "$client_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: Gradio client not ready" >&2
+  echo "browser_glb_smoke: Gradio client / smoke hooks not ready" >&2
   exit 3
 fi
 
@@ -125,52 +125,39 @@ if ! ab wait ".example-item" 30000 2>/dev/null; then
   exit 3
 fi
 
-echo "==> E2E load + generate + GLB (preview ${PREVIEW_WAIT_SEC}s, generate ${GENERATE_WAIT_SEC}s)"
-e2e_result="$(ab_text "(async () => {
-  const glbReady = () => {
-    if (document.body?.dataset?.smokeGlbReady === 'true') return true;
-    const step3 = document.getElementById('step-3')?.classList.contains('active');
-    const extract = document.getElementById('extract-btn');
-    const extractOn = extract && (extract.style.display === 'flex' || extract.style.display === 'block');
-    const viewer = document.getElementById('main-3d-viewer');
-    const viewerOn = viewer && viewer.style.visibility !== 'hidden' && (viewer.src || '').length > 8;
-    return !!(step3 && extractOn && viewerOn);
-  };
-  if (typeof window.__pixal3dLoadSamplePath !== 'function') return 'no-hook';
-  void window.__pixal3dLoadSamplePath('assets/images/0_img.png');
-  let deadline = Date.now() + ${PREVIEW_WAIT_SEC}000;
-  while (Date.now() < deadline) {
-    const status = window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || '';
-    if (status === 'done') break;
-    if (String(status).startsWith('err:')) return status;
-    if (document.body.dataset.smokeLoadError) return 'err:' + document.body.dataset.smokeLoadError;
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  if ((window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || '') !== 'done') {
-    return 'timeout:sample';
-  }
-  if (typeof window.__pixal3dRunGeneration !== 'function') return 'no-generation-hook';
-  window.__pixal3dRunGeneration();
-  deadline = Date.now() + ${GENERATE_WAIT_SEC}000;
-  while (Date.now() < deadline) {
-    if (document.getElementById('viewer-error')?.classList.contains('show')) {
-      const msg = document.getElementById('viewer-error-message')?.textContent?.trim() || 'viewer error';
-      return 'error:' + msg;
-    }
-    if (glbReady()) return 'glb-ready';
-    await new Promise((r) => setTimeout(r, 5000));
-  }
-  return 'timeout:glb';
-})()")"
+ab eval "window.__pixal3dSmokeReset('assets/images/0_img.png', ${PREVIEW_WAIT_SEC}, ${GENERATE_WAIT_SEC})" >/dev/null 2>&1 || true
 
-echo "browser_glb_smoke: e2e result=${e2e_result}"
-if [[ "$e2e_result" == "glb-ready" ]]; then
-  echo "OK: GLB ready in browser"
-  exit 0
-fi
-if [[ "$e2e_result" == error:* ]]; then
-  echo "browser_glb_smoke: viewer error (${e2e_result#error:})" >&2
-  exit 1
-fi
-echo "browser_glb_smoke: failed (${e2e_result})" >&2
+TOTAL_WAIT=$((PREVIEW_WAIT_SEC + GENERATE_WAIT_SEC + 60))
+echo "==> Smoke advance ticks (max ${TOTAL_WAIT}s, preview ${PREVIEW_WAIT_SEC}s + generate ${GENERATE_WAIT_SEC}s)"
+last=""
+for ((i = 0; i < TOTAL_WAIT; i += 3)); do
+  tick="$(ab_text "(async () => (window.__pixal3dSmokeAdvance ? await window.__pixal3dSmokeAdvance() : 'no-hook'))()")"
+  if [[ -n "$tick" && "$tick" != "$last" ]]; then
+    echo "browser_glb_smoke: tick=${tick} (${i}s)"
+    last="$tick"
+  fi
+
+  if [[ "$tick" == "glb-ready" ]]; then
+    src="$(ab_text "document.getElementById('main-3d-viewer')?.src || ''")"
+    marker="$(ab_text "document.body?.dataset?.smokeGlbReady || ''")"
+    echo "OK: GLB ready in browser"
+    [[ -n "$marker" ]] && echo "marker: data-smoke-glb-ready=${marker}"
+    [[ -n "$src" ]] && echo "src: $src"
+    exit 0
+  fi
+
+  if [[ "$tick" == error:* ]]; then
+    echo "browser_glb_smoke: ${tick}" >&2
+    exit 1
+  fi
+
+  if [[ "$tick" == timeout:* ]]; then
+    echo "browser_glb_smoke: ${tick}" >&2
+    exit 2
+  fi
+
+  sleep 3
+done
+
+echo "browser_glb_smoke: timed out (last tick=${last:-none})" >&2
 exit 2

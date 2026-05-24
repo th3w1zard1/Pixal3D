@@ -1554,6 +1554,9 @@
                 window.__pixal3dClientReady = true;
                 window.__pixal3dRunGeneration = () => startGeneration();
                 window.__pixal3dLoadSamplePath = (path = 'assets/images/0_img.png') => loadSampleFromPath(path);
+                if (smokeTestMode) {
+                    window.__pixal3dSmokeReset('assets/images/0_img.png', 150, 300);
+                }
                 setupUI();
                 loadSamples();
                 hideViewerError();
@@ -1825,6 +1828,95 @@
             window.__pixal3dSmokeSampleStatus = 'done';
             void handleImageUpload(file, { skipPreprocess: true });
         }
+
+        function smokeGlbReady() {
+            if (document.body?.dataset?.smokeGlbReady === 'true') return true;
+            const step3 = document.getElementById('step-3')?.classList.contains('active');
+            const extract = document.getElementById('extract-btn');
+            const extractOn = extract && (extract.style.display === 'flex' || extract.style.display === 'block');
+            const viewer = document.getElementById('main-3d-viewer');
+            const viewerOn = viewer && viewer.style.visibility !== 'hidden' && (viewer.src || '').length > 8;
+            return !!(step3 && extractOn && viewerOn);
+        }
+
+        window.__pixal3dSmokeReset = (samplePath = 'assets/images/0_img.png', previewWaitSec = 150, generateWaitSec = 300) => {
+            window.__pixal3dSmokeAdvanceState = {
+                samplePath,
+                previewWaitSec,
+                generateWaitSec,
+                phase: 'idle',
+                previewDeadline: Date.now() + previewWaitSec * 1000,
+                generateDeadline: null,
+                generationStarted: false,
+                lastError: null,
+            };
+            window.__pixal3dSmokeSampleStatus = '';
+            delete document.body.dataset.smokeLoadError;
+        };
+
+        window.__pixal3dSmokeAdvance = () => {
+            const s = window.__pixal3dSmokeAdvanceState;
+            if (!s) return 'error:not-initialized';
+
+            if (s.phase === 'idle') {
+                s.phase = 'loading';
+                void loadSampleFromPath(s.samplePath).catch((err) => {
+                    s.lastError = err?.message || String(err);
+                    s.phase = 'error';
+                });
+                return 'loading';
+            }
+
+            if (s.phase === 'loading') {
+                if (s.lastError) return `error:${s.lastError}`;
+                const status = window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || '';
+                if (String(status).startsWith('err:')) return status;
+                if (document.body.dataset.smokeLoadError) return `error:${document.body.dataset.smokeLoadError}`;
+                if (status === 'done' || document.body.dataset.smokeSampleLoad === 'done') {
+                    s.phase = 'sample-done';
+                    return 'sample-done';
+                }
+                if (Date.now() > s.previewDeadline) {
+                    s.phase = 'error';
+                    s.lastError = 'sample-timeout';
+                    return 'timeout:sample';
+                }
+                return 'loading';
+            }
+
+            if (s.phase === 'sample-done') {
+                if (!s.generationStarted) {
+                    if (typeof window.__pixal3dRunGeneration !== 'function') {
+                        return 'error:no-generation-hook';
+                    }
+                    s.generateDeadline = Date.now() + (s.generateWaitSec || 300) * 1000;
+                    window.__pixal3dRunGeneration();
+                    s.generationStarted = true;
+                }
+                s.phase = 'generating';
+                return 'generating';
+            }
+
+            if (s.phase === 'generating') {
+                const errEl = document.getElementById('viewer-error');
+                if (errEl?.classList.contains('show')) {
+                    const msg = document.getElementById('viewer-error-message')?.textContent?.trim() || 'viewer-error';
+                    return `error:${msg}`;
+                }
+                if (smokeGlbReady()) {
+                    s.phase = 'done';
+                    return 'glb-ready';
+                }
+                if (s.generateDeadline && Date.now() > s.generateDeadline) {
+                    return 'timeout:glb';
+                }
+                return 'generating';
+            }
+
+            if (s.phase === 'done') return 'glb-ready';
+            if (s.phase === 'error') return `error:${s.lastError || 'unknown'}`;
+            return s.phase;
+        };
 
         async function handleImageUpload(file, options = {}) {
             currentFile = file;
