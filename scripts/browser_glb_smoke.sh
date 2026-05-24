@@ -16,7 +16,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/browser_glb_smoke.sh [--url URL] [--headed] [--generate-wait SEC]
 
-Opens the Space with ?smoke=1&autoload=1&autogen=1 so the page loads the default
+Opens the Space with ?smoke=1&smoke_autoload=1&smoke_autogen=1 so the page loads the default
 sample and starts generation in-process (agent-browser does not keep async eval alive).
 
 Exit 0 when GLB is ready; 1 on viewer error; 2 on timeout; 3 on setup failure.
@@ -52,8 +52,8 @@ append_query() {
   fi
 }
 append_query "smoke" "1"
-append_query "autoload" "1"
-append_query "autogen" "1"
+append_query "smoke_autoload" "1"
+append_query "smoke_autogen" "1"
 
 if ! command -v agent-browser >/dev/null 2>&1; then
   echo "browser_glb_smoke: agent-browser not installed (see ce-setup / agent-browser docs)" >&2

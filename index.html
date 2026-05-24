@@ -1559,7 +1559,7 @@
                 hideViewerError();
                 await refreshRuntimeStatus();
                 scheduleRuntimePollInterval(lastRuntimeHealth);
-                if (smokeTestMode && new URLSearchParams(window.location.search).has('autoload')) {
+                if (smokeTestMode && new URLSearchParams(window.location.search).has('smoke_autoload')) {
                     void maybeAutoloadSmokeSample();
                 }
             } catch (err) {
@@ -1578,7 +1578,7 @@
             }
             try {
                 await loadSampleFromPath(samplePath);
-                if (params.has('autogen')) {
+                if (params.has('smoke_autogen')) {
                     await startGeneration();
                 }
             } catch (err) {
