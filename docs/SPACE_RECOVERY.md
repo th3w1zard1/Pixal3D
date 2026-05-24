@@ -11,7 +11,7 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 | Backend `/generate_3d` (CLI) | **Pass** — anonymous cold run ~124s, `glb_path`, `extract_available: true` (2026-05-24) |
 | Health + HTML smoke | **Pass** — markers + ZeroGPU recovery fields (`BiRefNet_lite`, prefetch, 120s cold slice, `cuda_mesh_operators`) |
 | GitHub ↔ HF parity | **Pass** — `check_repo_parity.py` on `main` |
-| Browser gallery → GLB | **Blocked on quota** when anonymous daily slice is exhausted; sign in on the Space or retry after reset |
+| Browser gallery → GLB | **Operator-verified** — run checklist printed by `verify_hosted_space.sh` before `--generate`; prior agent runs hit quota when slice exhausted (~19s left vs 120s requested) |
 
 ## Verification order (agents)
 
@@ -41,7 +41,7 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 
 ## Browser note (2026-05-24)
 
-Gallery sample `0_img.png` at 512 with idle error hidden; Generate reached step 3 but failed with full **ZeroGPU quota exceeded** copy (`120s requested vs. 19s left`) when anonymous daily quota is exhausted. Re-tested without prior CLI generate in-session: same quota message. Sign in on the Space or retry after reset for browser GLB proof; not an empty-overlay regression.
+Gallery sample `0_img.png` at 512 with idle error hidden. When anonymous quota is exhausted, Generate shows full **ZeroGPU quota exceeded** copy (not an empty overlay). With quota available, expect step 3 GLB viewer load after ~2–3 minutes cold. Agent browser session (2026-05-24): sample + Generate started at 512; confirm outcome manually via the checklist above. Sign in on the Space for higher quota.
 
 ## Remotes
 
