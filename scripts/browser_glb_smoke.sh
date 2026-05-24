@@ -142,29 +142,28 @@ load_result="$(ab_text "(async () => {
   const deadline = Date.now() + ${PREVIEW_WAIT_SEC}000;
   while (Date.now() < deadline) {
     const status = window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || '';
-    if (status === 'done') return 'done';
+    if (status === 'done') break;
     if (String(status).startsWith('err:')) return status;
     const loadErr = document.body.dataset.smokeLoadError || '';
     if (loadErr) return 'err:' + loadErr;
     await new Promise((r) => setTimeout(r, 500));
   }
-  return 'timeout';
+  if ((window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || '') !== 'done') {
+    return 'timeout';
+  }
+  if (typeof window.__pixal3dRunGeneration === 'function') {
+    window.__pixal3dRunGeneration();
+    return 'started';
+  }
+  return 'no-generation-hook';
 })()")"
-echo "browser_glb_smoke: load result=${load_result}"
-if [[ "$load_result" != "done" ]]; then
-  echo "browser_glb_smoke: sample load failed (${load_result})" >&2
+echo "browser_glb_smoke: load/generate start result=${load_result}"
+if [[ "$load_result" != "started" ]]; then
+  echo "browser_glb_smoke: sample load or generate start failed (${load_result})" >&2
   exit 2
 fi
 
-echo "==> Sample ready for generation"
-
-if ! ab_bool "typeof window.__pixal3dRunGeneration === 'function'"; then
-  echo "browser_glb_smoke: generation hook missing" >&2
-  exit 3
-fi
-
-echo "==> Starting generation (max ${GENERATE_WAIT_SEC}s)"
-ab eval "window.__pixal3dRunGeneration(); 'started'" >/dev/null 2>&1 || true
+echo "==> Waiting for GLB (max ${GENERATE_WAIT_SEC}s)"
 
 for ((i = 0; i < GENERATE_WAIT_SEC; i += 5)); do
   if ab_bool "document.getElementById('viewer-error')?.classList.contains('show')"; then
