@@ -60,7 +60,13 @@ from gradio import Server
 from gradio.data_classes import FileData
 
 from api_payload_utils import resolve_file_path
-from space_bootstrap import build_runtime_config, prepare_pipeline_directory
+from space_bootstrap import (
+    apply_hosted_space_env_defaults,
+    build_runtime_config,
+    hub_prefetch_state,
+    prepare_pipeline_directory,
+    start_hub_prefetch_thread,
+)
 from space_runtime import (
     ModelInitState,
     build_launch_options,
@@ -183,10 +189,24 @@ pipeline = None
 moge_model = None
 envmap = None
 preprocess_model = None
+apply_hosted_space_env_defaults()
 runtime_config = build_runtime_config()
 resolved_pipeline_dir = None
 runtime_state = ModelInitState()
 warmup_thread = None
+prefetch_thread = None
+
+
+def _store_prefetched_pipeline_dir(pipeline_dir: str) -> None:
+    global resolved_pipeline_dir
+    if resolved_pipeline_dir is None:
+        resolved_pipeline_dir = pipeline_dir
+
+
+prefetch_thread = start_hub_prefetch_thread(
+    runtime_config,
+    on_pipeline_dir=_store_prefetched_pipeline_dir,
+)
 preprocess_lock = threading.Lock()
 current_runtime_device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -1329,6 +1349,8 @@ def generation_gpu_duration(
 ) -> int:
     runtime_mode = resolve_runtime_mode(os.environ, torch.cuda.is_available())
     if runtime_mode == "zerogpu":
+        if pipeline is None:
+            return ZEROGPU_MAX_DURATION_SECONDS
         request_settings = normalize_generation_request(
             resolution=resolution,
             ss_sampling_steps=ss_sampling_steps,
@@ -1376,6 +1398,8 @@ def runtime_payload() -> dict[str, object]:
     runtime_mode = resolve_runtime_mode(os.environ, cuda_available)
     payload["warmup_on_start"] = runtime_config.warmup_on_start
     payload["rembg_model"] = runtime_config.rembg_model
+    payload["low_vram"] = _runtime_low_vram_enabled()
+    payload.update(hub_prefetch_state.snapshot())
     payload["pipeline_resolved"] = resolved_pipeline_dir is not None
     payload["current_runtime_device"] = current_runtime_device
     payload["runtime_mode"] = runtime_mode
