@@ -7,4 +7,5 @@
 - If runtime-facing files changed and there is no conflicting unrelated local work in those same files, deploy the candidate change to the test Space with the `hf` CLI.
 - After deploy, verify the live Space in a browser and run one end-to-end check with a default sample image before closing the task.
 - For hosted verification without a browser, run `python scripts/space_smoke.py --health-only --html-check` against the Space URL. Use `--generate` to prime `/warmup_runtime` then run a ZeroGPU-safe sample generate (512 / 5 steps); anonymous cold runs may still abort on quota—sign in on the Space for reliable full E2E.
+- Before closing a task that changed runtime-facing files, run `python scripts/check_repo_parity.py` to confirm `github/main` matches HF `origin/main`; if drift is reported, sync with `git push origin main` or enable `HF_TOKEN` auto-sync.
 - If deployment is unsafe because the working tree contains unrelated runtime changes, say so explicitly instead of silently publishing them.
