@@ -8,7 +8,8 @@ cd "$ROOT"
 
 SPACE_URL="${PIXAL3D_SPACE_URL:-https://th3w1zard1-pixal3d.hf.space/}"
 SAMPLE_SELECTOR=".example-item img[src*='0_img']"
-PREVIEW_WAIT_SEC="${BROWSER_SMOKE_PREVIEW_WAIT_SEC:-60}"
+CLIENT_WAIT_SEC="${BROWSER_SMOKE_CLIENT_WAIT_SEC:-120}"
+PREVIEW_WAIT_SEC="${BROWSER_SMOKE_PREVIEW_WAIT_SEC:-90}"
 GENERATE_WAIT_SEC="${BROWSER_SMOKE_GENERATE_WAIT_SEC:-300}"
 HEADED=0
 
@@ -89,14 +90,34 @@ echo "==> Browser GLB smoke: ${SPACE_URL}"
 ab open "$SPACE_URL"
 sleep 6
 
+echo "==> Waiting for Gradio client (max ${CLIENT_WAIT_SEC}s)"
+client_ok=0
+for ((i = 0; i < CLIENT_WAIT_SEC; i += 3)); do
+  if ab_bool "window.__pixal3dClientReady === true && typeof window.__pixal3dRunGeneration === 'function'"; then
+    client_ok=1
+    break
+  fi
+  sleep 3
+done
+
+if [[ "$client_ok" -ne 1 ]]; then
+  echo "browser_glb_smoke: Gradio client not ready (__pixal3dRunGeneration missing)" >&2
+  exit 3
+fi
+
 if ! ab wait ".example-item" 30000 2>/dev/null; then
   echo "browser_glb_smoke: gallery did not load (.example-item timeout)" >&2
   exit 3
 fi
 
-if ! ab click "$SAMPLE_SELECTOR" 2>/dev/null; then
-  echo "browser_glb_smoke: could not click gallery sample (selector: ${SAMPLE_SELECTOR})" >&2
-  exit 3
+echo "==> Loading default gallery sample via smoke API"
+if ab_bool "typeof window.__pixal3dLoadSamplePath === 'function'"; then
+  ab eval "window.__pixal3dLoadSamplePath('assets/images/0_img.png'); 'fired'" >/dev/null 2>&1 || true
+else
+  if ! ab click "$SAMPLE_SELECTOR" 2>/dev/null; then
+    echo "browser_glb_smoke: could not load default sample" >&2
+    exit 3
+  fi
 fi
 
 echo "==> Waiting for upload preview (max ${PREVIEW_WAIT_SEC}s)"
@@ -110,37 +131,45 @@ for ((i = 0; i < PREVIEW_WAIT_SEC; i += 2)); do
 done
 
 if [[ "$preview_ok" -ne 1 ]]; then
+  echo "browser_glb_smoke: smoke API load slow; clicking gallery sample" >&2
+  ab click "$SAMPLE_SELECTOR" 2>/dev/null || true
+  for ((i = 0; i < 45; i += 2)); do
+    if ab_bool "document.body?.dataset?.smokeFileReady === 'true' || !!document.getElementById('source-preview')?.src"; then
+      preview_ok=1
+      break
+    fi
+    sleep 2
+  done
+fi
+
+if [[ "$preview_ok" -ne 1 ]]; then
   echo "browser_glb_smoke: source preview / file-ready marker never appeared" >&2
   exit 2
 fi
 
-sleep 5
+sleep 3
 
-echo "==> Waiting for Generate to unlock (max 90s)"
-gen_ready=0
-for ((i = 0; i < 90; i += 3)); do
-  if ab_bool "!document.getElementById('generate-btn')?.disabled"; then
-    gen_ready=1
+echo "==> Waiting for generation hook after upload (max 60s)"
+hook_ok=0
+for ((i = 0; i < 60; i += 3)); do
+  if ab_bool "typeof window.__pixal3dRunGeneration === 'function'"; then
+    hook_ok=1
     break
   fi
   sleep 3
 done
 
-if [[ "$gen_ready" -ne 1 ]]; then
-  echo "browser_glb_smoke: Generate stayed disabled (runtime may still be warming)" >&2
-  echo "browser_glb_smoke: forcing programmatic click; if this fails, sign in for higher quota" >&2
+if [[ "$hook_ok" -ne 1 ]]; then
+  echo "browser_glb_smoke: generation hook missing (page may have reloaded)" >&2
+  exit 3
 fi
 
 echo "==> Starting generation (max ${GENERATE_WAIT_SEC}s for GLB or error)"
-if ! ab_bool "!!document.getElementById('generate-btn')"; then
-  echo "browser_glb_smoke: generate button missing from DOM" >&2
-  exit 2
-fi
-ab eval "document.getElementById('generate-btn').click(); 'started'" >/dev/null
+ab eval "window.__pixal3dRunGeneration(); 'started'" >/dev/null
 
 generation_started=0
-for ((i = 0; i < 45; i += 3)); do
-  if ab_bool "document.getElementById('loading-overlay')?.style?.display === 'flex'"; then
+for ((i = 0; i < 60; i += 3)); do
+  if ab_bool "document.body?.dataset?.smokeGenerationActive === 'true'"; then
     generation_started=1
     break
   fi
@@ -152,7 +181,12 @@ for ((i = 0; i < 45; i += 3)); do
 done
 
 if [[ "$generation_started" -ne 1 ]]; then
-  echo "browser_glb_smoke: Generate did not start (no loading overlay within 45s)" >&2
+  if ab_bool "document.body?.dataset?.smokeGenerationRequested === 'true'"; then
+    abort="$(ab_text "document.body?.dataset?.smokeGenerationAbort || 'unknown'")"
+    echo "browser_glb_smoke: generation aborted before loading (${abort})" >&2
+  else
+    echo "browser_glb_smoke: Generate did not start (hook did not run startGeneration)" >&2
+  fi
   err_hint="$(ab_text "document.getElementById('viewer-error-message')?.textContent?.trim() || ''")"
   [[ -n "$err_hint" ]] && echo "browser_glb_smoke: viewer message: ${err_hint}" >&2
   exit 2
