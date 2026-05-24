@@ -13,7 +13,7 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 | Backend `/generate_3d` (CLI) | **Pass** — anonymous cold run ~124s, `glb_path`, `extract_available: true` (2026-05-24) |
 | Health + HTML smoke | **Pass** — markers + ZeroGPU recovery fields (`BiRefNet_lite`, prefetch, 120s cold slice, `cuda_mesh_operators`) |
 | GitHub ↔ HF parity | **Pass** — `check_repo_parity.py` on `main` at `b6ce207` (2026-05-24, PR #34 merged) |
-| Browser gallery → GLB | **Automated** — `./scripts/browser_glb_smoke.sh` (`?smoke=1`, in-eval sample wait; plan 048); exit **0** = `data-smoke-glb-ready`; **1** quota/viewer error; **2** timeout |
+| Browser gallery → GLB | **Partial auto** (plan 048) — `./scripts/browser_glb_smoke.sh` uses `?smoke=1`, sync sample preview, fetch/gallery load, single-eval E2E; reliably reaches **sample `done`** + **generate `started`**; full **exit 0** (GLB) depends on agent-browser CDP budget (use `--generate-wait 420`; retry on flake). CLI `--generate` remains authoritative for GLB path. |
 
 ## Verification order (agents)
 
