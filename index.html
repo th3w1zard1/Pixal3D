@@ -1547,6 +1547,19 @@
             startQueuePolling();
             try {
                 client = await Client.connect(window.location.origin);
+                window.__pixal3dClientReady = true;
+                window.__pixal3dRunGeneration = () => startGeneration();
+                window.__pixal3dLoadSamplePath = async (path = 'assets/images/0_img.png') => {
+                    showLoading();
+                    const res = await fetch(path);
+                    const blob = await res.blob();
+                    const ext = path.split('.').pop().toLowerCase();
+                    const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+                    const mime = mimeMap[ext] || 'image/png';
+                    const file = new File([blob], path.split('/').pop(), { type: mime });
+                    await handleImageUpload(file);
+                    hideLoading();
+                };
                 setupUI();
                 loadSamples();
                 hideViewerError();
@@ -2093,9 +2106,19 @@
             return viewer;
         }
 
+        function markSmokeGenerationAbort(reason) {
+            document.body.dataset.smokeGenerationAbort = reason;
+        }
+
         async function startGeneration() {
-            if (!currentFile) return;
+            document.body.dataset.smokeGenerationRequested = 'true';
+            delete document.body.dataset.smokeGenerationAbort;
+            if (!currentFile) {
+                markSmokeGenerationAbort('no-file');
+                return;
+            }
             if (isCpuStandby(lastRuntimeHealth)) {
+                markSmokeGenerationAbort('cpu-standby');
                 showToast(
                     lastRuntimeHealth?.message || 'Waiting for GPU hardware. This page reloads automatically when ZeroGPU is ready.',
                     5200
@@ -2107,6 +2130,7 @@
                 && lastRuntimeHealth.runtime_mode !== 'zerogpu'
                 && !lastRuntimeReady
             ) {
+                markSmokeGenerationAbort('warming');
                 showToast(
                     lastRuntimeHealth?.message || 'Models are still warming. Wait for the runtime to report ready.',
                     5200
@@ -2117,6 +2141,7 @@
             // Clear old preview frames and 3D result
             generationResult = null;
             delete document.body.dataset.smokeGlbReady;
+            delete document.body.dataset.smokeGenerationRequested;
             document.getElementById('frame-container').innerHTML = '';
             document.getElementById('angle-slider').value = 0;
             document.getElementById('angle-display').textContent = '00';
@@ -2544,10 +2569,12 @@
 
         function showLoading() {
             document.getElementById('loading-overlay').style.display = 'flex';
+            document.body.dataset.smokeGenerationActive = 'true';
         }
 
         function hideLoading() {
             document.getElementById('loading-overlay').style.display = 'none';
+            delete document.body.dataset.smokeGenerationActive;
             document.getElementById('progress-stages').style.display = 'none';
             document.getElementById('progress-log').innerHTML = '';
             document.getElementById('progress-bar-fill').style.width = '0%';
