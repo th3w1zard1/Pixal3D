@@ -9,6 +9,8 @@ from typing import Callable
 
 DEFAULT_REMBG_MODEL = "ZhengPeng7/BiRefNet"
 DEFAULT_REMBG_FALLBACKS = ("ZhengPeng7/BiRefNet_lite",)
+ZEROGPU_REMBG_MODEL = "ZhengPeng7/BiRefNet_lite"
+ZEROGPU_REMBG_FALLBACKS = ("ZhengPeng7/BiRefNet",)
 
 
 @dataclass(frozen=True)
@@ -28,13 +30,37 @@ def _as_bool(value: str | None, default: bool) -> bool:
     return value.strip().lower() not in {"0", "false", "no", "off"}
 
 
-def build_runtime_config(env: dict[str, str] | None = None) -> RuntimeConfig:
-    env = env or os.environ
-    fallback_models = tuple(
+def _is_zerogpu_hosted_space(env: dict[str, str]) -> bool:
+    if not env.get("SPACE_ID"):
+        return False
+    accelerator = (env.get("ACCELERATOR") or "").strip().lower()
+    return accelerator.startswith("zero")
+
+
+def _default_rembg_model(env: dict[str, str]) -> str:
+    override = env.get("PIXAL3D_REMBG_MODEL")
+    if override:
+        return override
+    if _is_zerogpu_hosted_space(env):
+        return ZEROGPU_REMBG_MODEL
+    return DEFAULT_REMBG_MODEL
+
+
+def _default_rembg_fallbacks(env: dict[str, str]) -> tuple[str, ...]:
+    explicit = tuple(
         value.strip()
         for value in env.get("PIXAL3D_REMBG_FALLBACKS", "").split(",")
         if value.strip()
     )
+    if explicit:
+        return explicit
+    if _is_zerogpu_hosted_space(env):
+        return ZEROGPU_REMBG_FALLBACKS
+    return DEFAULT_REMBG_FALLBACKS
+
+
+def build_runtime_config(env: dict[str, str] | None = None) -> RuntimeConfig:
+    env = env or os.environ
     warmup_default = not bool(env.get("SPACE_ID"))
     warmup_override = env.get("PIXAL3D_WARMUP_ON_START")
 
@@ -42,8 +68,8 @@ def build_runtime_config(env: dict[str, str] | None = None) -> RuntimeConfig:
         hf_token=env.get("HF_TOKEN") or None,
         hf_cache_dir=env.get("PIXAL3D_HF_CACHE_DIR") or None,
         pipeline_revision=env.get("PIXAL3D_PIPELINE_REVISION") or None,
-        rembg_model=env.get("PIXAL3D_REMBG_MODEL") or DEFAULT_REMBG_MODEL,
-        rembg_fallback_models=fallback_models or DEFAULT_REMBG_FALLBACKS,
+        rembg_model=_default_rembg_model(env),
+        rembg_fallback_models=_default_rembg_fallbacks(env),
         rembg_trust_remote_code=_as_bool(
             env.get("PIXAL3D_REMBG_TRUST_REMOTE_CODE"), True
         ),
