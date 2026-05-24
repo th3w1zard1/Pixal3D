@@ -135,49 +135,54 @@ fi
 
 sample_ready_js="document.body?.dataset?.smokeSampleLoad === 'done'"
 
-echo "==> Loading default gallery sample via smoke API"
-if ab_bool "typeof window.__pixal3dLoadSamplePath === 'function'"; then
-  ab eval "(async () => { try { await window.__pixal3dLoadSamplePath('assets/images/0_img.png'); return 'ok'; } catch (e) { return 'err'; } })()" >/dev/null 2>&1 || true
-else
-  if ! ab click "$SAMPLE_SELECTOR" 2>/dev/null; then
-    echo "browser_glb_smoke: could not load default sample" >&2
-    exit 3
-  fi
-fi
-
-echo "==> Waiting for sample file + preview (max ${PREVIEW_WAIT_SEC}s)"
+echo "==> Loading default gallery sample (max ${PREVIEW_WAIT_SEC}s)"
 preview_ok=0
-for ((i = 0; i < PREVIEW_WAIT_SEC; i += 2)); do
-  load_err="$(ab_text "document.body?.dataset?.smokeLoadError || ''")"
-  if [[ -n "$load_err" ]]; then
-    echo "browser_glb_smoke: sample load error (${load_err})" >&2
+load_result=""
+if ab_bool "typeof window.__pixal3dLoadSamplePath === 'function'"; then
+  load_result="$(ab_text "(async () => {
+    try {
+      await window.__pixal3dLoadSamplePath('assets/images/0_img.png');
+      return window.__pixal3dSmokeSampleStatus || document.body.dataset.smokeSampleLoad || 'unknown';
+    } catch (e) {
+      return 'err:' + (e?.message || String(e));
+    }
+  })()")"
+  echo "browser_glb_smoke: load result=${load_result}"
+  if [[ "$load_result" == "done" ]]; then
+    preview_ok=1
+  elif [[ "$load_result" == err:* ]]; then
+    echo "browser_glb_smoke: sample load failed (${load_result})" >&2
     exit 2
   fi
-  if ab_bool "$sample_ready_js"; then
-    preview_ok=1
-    break
-  fi
-  if ab_bool "document.body?.dataset?.smokeFileReady === 'true'"; then
-    preview_ok=1
-    break
-  fi
-  sleep 2
-done
+else
+  echo "browser_glb_smoke: __pixal3dLoadSamplePath missing" >&2
+  exit 3
+fi
 
 if [[ "$preview_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: smoke API load slow; clicking gallery sample" >&2
-  ab click "$SAMPLE_SELECTOR" 2>/dev/null || true
-  for ((i = 0; i < 60; i += 2)); do
+  echo "browser_glb_smoke: awaiting sample markers (fallback poll)" >&2
+  for ((i = 0; i < PREVIEW_WAIT_SEC; i += 2)); do
+    status="$(ab_text "window.__pixal3dSmokeSampleStatus || document.body?.dataset?.smokeSampleLoad || ''")"
     load_err="$(ab_text "document.body?.dataset?.smokeLoadError || ''")"
     if [[ -n "$load_err" ]]; then
       echo "browser_glb_smoke: sample load error (${load_err})" >&2
       exit 2
     fi
-    if ab_bool "$sample_ready_js"; then
+    if [[ "$status" == "done" ]] || ab_bool "$sample_ready_js"; then
       preview_ok=1
       break
     fi
-    if ab_bool "document.body?.dataset?.smokeFileReady === 'true'"; then
+    sleep 2
+  done
+fi
+
+if [[ "$preview_ok" -ne 1 ]]; then
+  echo "browser_glb_smoke: clicking gallery sample (last resort)" >&2
+  ab eval "document.querySelector('.example-item img[src*=\"0_img\"]')?.closest('.example-item')?.click(); 'clicked'" >/dev/null 2>&1 || true
+  ab click "$SAMPLE_SELECTOR" 2>/dev/null || true
+  for ((i = 0; i < 60; i += 2)); do
+    status="$(ab_text "window.__pixal3dSmokeSampleStatus || document.body?.dataset?.smokeSampleLoad || ''")"
+    if [[ "$status" == "done" ]] || ab_bool "$sample_ready_js"; then
       preview_ok=1
       break
     fi
@@ -190,7 +195,7 @@ if [[ "$preview_ok" -eq 1 ]]; then
 fi
 
 if [[ "$preview_ok" -ne 1 ]]; then
-  echo "browser_glb_smoke: sample file not ready (data-smoke-sample-load never set)" >&2
+  echo "browser_glb_smoke: sample file not ready (__pixal3dSmokeSampleStatus)" >&2
   exit 2
 fi
 

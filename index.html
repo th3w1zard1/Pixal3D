@@ -1791,17 +1791,18 @@
         async function loadSampleFromPath(path = 'assets/images/0_img.png') {
             delete document.body.dataset.smokeLoadError;
             delete document.body.dataset.smokeSampleLoad;
+            window.__pixal3dSmokeSampleStatus = 'loading';
             showSourcePreviewFromUrl(new URL(path, window.location.origin).href);
             document.getElementById('generate-btn').disabled = true;
             let file = null;
             if (smokeTestMode) {
-                file = await fileFromGalleryImage(path, 45000);
+                try {
+                    file = await fetchSampleFile(path, 25000);
+                } catch (err) {
+                    console.warn('Smoke sample fetch failed, trying gallery:', err);
+                }
                 if (!file) {
-                    try {
-                        file = await fetchSampleFile(path, 8000);
-                    } catch (err) {
-                        console.warn('Smoke sample fetch failed:', err);
-                    }
+                    file = await fileFromGalleryImage(path, 15000);
                 }
             } else {
                 try {
@@ -1813,6 +1814,7 @@
             }
             if (!file) {
                 document.body.dataset.smokeLoadError = 'sample-file-unavailable';
+                window.__pixal3dSmokeSampleStatus = 'error:sample-file-unavailable';
                 throw new Error('Could not load sample file');
             }
             currentFile = file;
@@ -1820,6 +1822,7 @@
             document.body.dataset.smokeFileReady = 'true';
             updateGenerateAvailability(lastRuntimeHealth);
             document.body.dataset.smokeSampleLoad = 'done';
+            window.__pixal3dSmokeSampleStatus = 'done';
             void handleImageUpload(file, { skipPreprocess: true });
         }
 
