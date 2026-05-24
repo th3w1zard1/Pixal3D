@@ -63,12 +63,21 @@ It currently validates:
 - Ruff functional checks on `app.py`, `api_payload_utils.py`, `space_bootstrap.py`, `space_runtime.py`, and `scripts/`
 - GitHub Actions workflow YAML parsing through `scripts/check_workflow_yaml.py`
 - syntax compilation for the core app and runtime files
+- live hosted Space smoke via `scripts/space_smoke.py --health-only --html-check` (`space-live-smoke` job)
 
 It intentionally does not validate:
 
 - CUDA-only dependencies from the runtime requirements files
 - heavyweight model downloads
 - end-to-end inference or GPU kernels on GitHub-hosted runners
+
+For local or agent verification of the hosted Space without a browser:
+
+```bash
+python scripts/space_smoke.py --health-only --html-check
+```
+
+Use `--generate` only when ZeroGPU quota allows (see `AGENTS.md`).
 
 ### Release behavior
 
@@ -102,7 +111,7 @@ Other supported repository variables:
 
 - `HF_SPACE_SDK` to override the Space SDK, default `gradio`
 - `HF_SPACE_PRIVATE=true` to create or preserve a private Space target during preflight and mirror setup
-- `HF_SPACE_AUTO_SYNC=true` to allow pushes to `main` to mirror automatically
+- `HF_SPACE_AUTO_SYNC=false` to disable automatic mirroring on pushes to `main`
 
 For one-off manual runs, `sync-hf-space.yml` also accepts these workflow inputs:
 
@@ -111,14 +120,19 @@ For one-off manual runs, `sync-hf-space.yml` also accepts these workflow inputs:
 - `hf_space_private`
 - `create_if_missing`
 
-Required secret:
+Required secret (for sync to run):
 
 - `HF_TOKEN`
 
-The sync workflow now fails immediately with a clear preflight error when `HF_TOKEN` is missing, instead of waiting until the Hugging Face API step to surface the problem.
+Behavior:
+
+- Pushes to `main` trigger sync by default unless `HF_SPACE_AUTO_SYNC=false`.
+- When `HF_TOKEN` is missing on a push, the workflow skips sync without failing CI.
+- Manual `workflow_dispatch` runs still require `HF_TOKEN` and fail preflight if it is absent.
+- After a successful hub-sync, the workflow polls `scripts/space_smoke.py` against the resolved Space URL until health/HTML markers pass or the retry window expires.
 
 Recommended rollout path:
 
 1. Add `HF_TOKEN` and any intended `HF_SPACE_*` variables.
 2. Manually dispatch `sync-hf-space.yml` with `create_if_missing=false` first.
-3. Enable `HF_SPACE_AUTO_SYNC=true` only after the manual run succeeds.
+3. Confirm post-sync smoke passes, then rely on automatic main-push mirroring.
