@@ -49,6 +49,7 @@ jobs:
           scripts/resolve_hf_space_config.py
           scripts/ensure_hf_space.py
           scripts/space_smoke.py
+          scripts/check_repo_parity.py
 
   space-live-smoke:
     runs-on: ubuntu-latest

@@ -136,3 +136,9 @@ Recommended rollout path:
 1. Add `HF_TOKEN` and any intended `HF_SPACE_*` variables.
 2. Manually dispatch `sync-hf-space.yml` with `create_if_missing=false` first.
 3. Confirm post-sync smoke passes, then rely on automatic main-push mirroring.
+
+Check GitHub↔HF drift any time (exits 0 when remotes match):
+
+```bash
+python scripts/check_repo_parity.py
+```
