@@ -1028,6 +1028,7 @@
                             </span>
                         </label>
                         <select id="resolution">
+                            <option value="512">512 (Fast / ZeroGPU)</option>
                             <option value="1024" selected>1024 (Balanced)</option>
                             <option value="1536">1536 (High Quality / Paid GPU)</option>
                         </select>
@@ -1855,6 +1856,11 @@
                 exportSelect.value = 'fast';
                 exportSelect.dataset.zerogpuDefaulted = '1';
                 updateExportProfileHint();
+            }
+            const resolutionSelect = document.getElementById('resolution');
+            if (resolutionSelect && resolutionSelect.dataset.zerogpuDefaulted !== '1') {
+                resolutionSelect.value = '512';
+                resolutionSelect.dataset.zerogpuDefaulted = '1';
             }
         }
 
