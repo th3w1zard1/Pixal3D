@@ -2084,6 +2084,7 @@
             });
             viewer.style.visibility = 'visible';
             setStep(targetStep);
+            document.body.dataset.smokeGlbReady = 'true';
             return viewer;
         }
 
@@ -2106,6 +2107,7 @@
 
             // Clear old preview frames and 3D result
             generationResult = null;
+            delete document.body.dataset.smokeGlbReady;
             document.getElementById('frame-container').innerHTML = '';
             document.getElementById('angle-slider').value = 0;
             document.getElementById('angle-display').textContent = '00';
