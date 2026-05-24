@@ -2,7 +2,9 @@
 
 ## Status
 
-The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery work is tracked in plans `docs/plans/2026-05-24-027-*` through `034-*`.
+The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery work is tracked in plans `docs/plans/2026-05-24-027-*` through `036-*`.
+
+**Last verified (anonymous, 2026-05-24):** `space_smoke.py --health-only --html-check` pass; `--generate` pass (~134s) with `glb_path`, `extract_available: true`, geometry-only GLB message. GitHub and HF `main` at parity (`check_repo_parity.py` OK).
 
 ## What was fixed
 
@@ -22,6 +24,8 @@ python3 scripts/space_smoke.py --health-only --html-check
 python3 -m venv .venv && .venv/bin/pip install -r scripts/smoke-requirements.txt
 .venv/bin/python scripts/space_smoke.py --generate
 ```
+
+- **CI (manual):** GitHub Actions → **Python CI** → **Run workflow** runs `space-generate-smoke` (`--generate`). Use when quota allows; not run on every push.
 
 - **Parity:** `github/main` should match HF `origin/main`. If drift is reported, run `git push origin main` or configure `HF_TOKEN` in GitHub Actions.
 - **Browser:** Open the Space, confirm no error overlay on load, click the first gallery sample (`assets/images/0_img.png`), run Generate at 512 / ZeroGPU-safe steps. Expect ~2–3 minutes cold; sign in if ZeroGPU quota is exhausted.

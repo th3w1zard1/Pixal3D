@@ -41,6 +41,7 @@ In short, the project is prioritizing dependable workflow and deployment hygiene
 - Preview frame rendering needs CUDA mesh operators (`cumesh`); `/health` reports `cuda_mesh_operators`. Hosted ZeroGPU uses a geometry-only GLB export path (no preview frames) to stay within GPU slice limits; other CUDA runtimes still render previews when operators are available
 - Health endpoint: `/health`
 - Readiness endpoint: `/ready` returns `200` only after the GPU runtime is actually primed
+- Space recovery runbook: [docs/SPACE_RECOVERY.md](docs/SPACE_RECOVERY.md) (verification commands, plan index, parity notes)
 
 ## Optional environment variables
 
@@ -69,6 +70,7 @@ It currently validates:
 - syntax compilation for the core app and runtime files
 - live hosted Space smoke via `scripts/space_smoke.py --health-only --html-check` (`space-live-smoke` job)
 - on pushes to `main`, a non-blocking `repo-parity` job compares GitHub `main` to the public Hugging Face Space git ref and logs drift when `HF_TOKEN` sync was skipped
+- optional manual full generate smoke via **Actions → Python CI → Run workflow** (`space-generate-smoke` job; consumes ZeroGPU quota, ~2–3 minutes)
 
 It intentionally does not validate:
 
