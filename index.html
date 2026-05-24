@@ -331,6 +331,25 @@
             background: rgba(255, 255, 255, 0.14);
         }
 
+        .viewer-error-signin {
+            display: inline-block;
+            padding: 0.5rem 0.9rem;
+            border-radius: 8px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+        }
+
+        .viewer-error-signin:hover {
+            filter: brightness(1.08);
+        }
+
+        .viewer-error-signin[hidden] {
+            display: none;
+        }
+
         #frame-container {
             width: 100%;
             height: 100%;
@@ -1346,6 +1365,7 @@
                             <h3 id="viewer-error-title">Generation could not complete</h3>
                             <p id="viewer-error-message"></p>
                             <div class="viewer-error-actions">
+                                <a id="viewer-error-signin" class="viewer-error-signin" href="https://huggingface.co/login" target="_blank" rel="noopener noreferrer" hidden>Sign in on Hugging Face</a>
                                 <button type="button" id="viewer-error-copy">Copy details</button>
                                 <button type="button" id="viewer-error-dismiss">Dismiss</button>
                             </div>
@@ -2165,17 +2185,26 @@
         function hideViewerError() {
             const el = document.getElementById('viewer-error');
             if (el) el.classList.remove('show');
+            const signIn = document.getElementById('viewer-error-signin');
+            if (signIn) signIn.hidden = true;
         }
 
         function showViewerError(message, opts) {
             const el = document.getElementById('viewer-error');
             if (!el) return;
             const title = (opts && opts.title) || 'Generation could not complete';
+            const msgText = (message && String(message).trim()) || 'An unknown error occurred.';
             document.getElementById('viewer-error-title').textContent = title;
-            document.getElementById('viewer-error-message').textContent =
-                (message && String(message).trim()) || 'An unknown error occurred.';
+            document.getElementById('viewer-error-message').textContent = msgText;
+            const signIn = document.getElementById('viewer-error-signin');
+            if (signIn) {
+                const showSignIn = /quota exceeded|GPU task aborted/i.test(msgText);
+                signIn.hidden = !showSignIn;
+                if (showSignIn) {
+                    signIn.href = `https://huggingface.co/login?next=${encodeURIComponent(window.location.href)}`;
+                }
+            }
             el.classList.add('show');
-            // Make sure the user actually sees it: jump to the result tab
             if (typeof setStep === 'function') setStep(3);
         }
 
