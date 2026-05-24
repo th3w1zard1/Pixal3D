@@ -105,7 +105,7 @@ ZEROGPU_MAX_DURATION_SECONDS = 120
 # Keep per-call reservations small so one cold generate fits typical free quota.
 # ZeroGPU may promote to xlarge (2x quota cost vs declared duration); cap accordingly.
 ZEROGPU_QUOTA_MULTIPLIER = 2
-ZEROGPU_WARMUP_DURATION_SECONDS = 30
+ZEROGPU_WARMUP_DURATION_SECONDS = 60
 ZEROGPU_GENERATION_MAX_DURATION_SECONDS = 60
 ZEROGPU_EXTRACT_DURATION_SECONDS = 30
 ZEROGPU_MAX_RESOLUTION = 1024
