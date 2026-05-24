@@ -105,8 +105,8 @@ STEPS = 8
 ZEROGPU_MAX_DURATION_SECONDS = 120
 # Keep per-call reservations small so one cold generate fits typical free quota.
 ZEROGPU_WARMUP_DURATION_SECONDS = 50
-ZEROGPU_GENERATION_MAX_DURATION_SECONDS = 48
-ZEROGPU_EXTRACT_DURATION_SECONDS = 45
+ZEROGPU_GENERATION_MAX_DURATION_SECONDS = 40
+ZEROGPU_EXTRACT_DURATION_SECONDS = 40
 ZEROGPU_MAX_RESOLUTION = 1024
 ZEROGPU_MAX_STAGE_STEPS = 5
 ZEROGPU_MAX_DECIMATION_TARGET = 500000
@@ -1344,7 +1344,7 @@ def generation_gpu_duration(
         )
         return min(
             ZEROGPU_GENERATION_MAX_DURATION_SECONDS,
-            max(45, 30 + total_steps * 2),
+            max(35, 20 + total_steps * 2),
         )
 
     # Cold model initialization is handled separately by `warmup_runtime`.
@@ -1384,6 +1384,15 @@ def runtime_payload() -> dict[str, object]:
     payload["preview_available"] = cuda_available
     target_hardware = resolve_target_hardware(os.environ)
     payload["target_hardware"] = target_hardware
+
+    if runtime_mode == "zerogpu":
+        payload["zerogpu_gpu_budgets"] = {
+            "warmup_seconds": ZEROGPU_WARMUP_DURATION_SECONDS,
+            "generation_max_seconds": ZEROGPU_GENERATION_MAX_DURATION_SECONDS,
+            "extract_seconds": ZEROGPU_EXTRACT_DURATION_SECONDS,
+            "max_texture_size": ZEROGPU_MAX_TEXTURE_SIZE,
+            "max_stage_steps": ZEROGPU_MAX_STAGE_STEPS,
+        }
 
     if runtime_mode == "cpu":
         payload["ready"] = False

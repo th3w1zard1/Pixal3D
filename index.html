@@ -1432,8 +1432,8 @@
         const EXPORT_PROFILES = {
             fast: {
                 label: "Fast Preview GLB",
-                textureSize: 1024,
-                hint: "Fastest export and lowest quota cost. Best for proofing or quick handoff."
+                textureSize: 512,
+                hint: "Fastest export and lowest quota cost. Best for proofing or quick handoff on ZeroGPU."
             },
             balanced: {
                 label: "Balanced GLB",
@@ -1700,8 +1700,19 @@
                     ? 'Runtime is hot. Generation should start immediately unless the hosted queue is saturated.'
                     : (data.message || 'The hosted runtime is cold. Generate will prime the model stack automatically.');
                 runtimePrimed = !!data.ready;
+                applyZeroGpuHostedDefaults(data);
             } catch (err) {
                 console.debug('Runtime status probe failed:', err);
+            }
+        }
+
+        function applyZeroGpuHostedDefaults(health) {
+            if (health?.runtime_mode !== 'zerogpu') return;
+            const exportSelect = document.getElementById('export-profile');
+            if (exportSelect && exportSelect.dataset.zerogpuDefaulted !== '1') {
+                exportSelect.value = 'fast';
+                exportSelect.dataset.zerogpuDefaulted = '1';
+                updateExportProfileHint();
             }
         }
 
