@@ -1743,23 +1743,29 @@
             document.body.dataset.smokeFileReady = 'true';
         }
 
-        async function fileFromGalleryImage(path) {
+        async function fileFromGalleryImage(path, waitMs = 20000) {
             const name = path.split('/').pop();
-            const thumb = document.querySelector(`.example-item img[src*="${name}"]`);
-            if (!thumb || !thumb.complete || !thumb.naturalWidth) return null;
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = thumb.naturalWidth;
-                canvas.height = thumb.naturalHeight;
-                canvas.getContext('2d').drawImage(thumb, 0, 0);
-                const blob = await new Promise((resolve, reject) => {
-                    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas toBlob failed'))), 'image/png');
-                });
-                return new File([blob], name, { type: mimeForPath(path) });
-            } catch (err) {
-                console.warn('Gallery image fallback failed:', err);
-                return null;
+            const deadline = Date.now() + waitMs;
+            while (Date.now() < deadline) {
+                const thumb = document.querySelector(`.example-item img[src*="${name}"]`);
+                if (thumb && thumb.complete && thumb.naturalWidth) {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = thumb.naturalWidth;
+                        canvas.height = thumb.naturalHeight;
+                        canvas.getContext('2d').drawImage(thumb, 0, 0);
+                        const blob = await new Promise((resolve, reject) => {
+                            canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas toBlob failed'))), 'image/png');
+                        });
+                        return new File([blob], name, { type: mimeForPath(path) });
+                    } catch (err) {
+                        console.warn('Gallery image fallback failed:', err);
+                        return null;
+                    }
+                }
+                await new Promise((resolve) => setTimeout(resolve, 250));
             }
+            return null;
         }
 
         async function fetchSampleFile(path, timeoutMs = 20000) {
@@ -1781,18 +1787,33 @@
             showSourcePreviewFromUrl(new URL(path, window.location.origin).href);
             document.getElementById('generate-btn').disabled = true;
             let file = null;
-            try {
-                file = await fetchSampleFile(path);
-            } catch (err) {
-                console.warn('Sample fetch failed, trying gallery thumbnail:', err);
-                file = await fileFromGalleryImage(path);
+            if (smokeTestMode) {
+                file = await fileFromGalleryImage(path, 45000);
+                if (!file) {
+                    try {
+                        file = await fetchSampleFile(path, 8000);
+                    } catch (err) {
+                        console.warn('Smoke sample fetch failed:', err);
+                    }
+                }
+            } else {
+                try {
+                    file = await fetchSampleFile(path);
+                } catch (err) {
+                    console.warn('Sample fetch failed, trying gallery thumbnail:', err);
+                    file = await fileFromGalleryImage(path);
+                }
             }
             if (!file) {
                 document.body.dataset.smokeLoadError = 'sample-file-unavailable';
                 throw new Error('Could not load sample file');
             }
-            await handleImageUpload(file, { skipPreprocess: true });
+            currentFile = file;
+            preprocessedFile = null;
+            document.body.dataset.smokeFileReady = 'true';
+            updateGenerateAvailability(lastRuntimeHealth);
             document.body.dataset.smokeSampleLoad = 'done';
+            void handleImageUpload(file, { skipPreprocess: true });
         }
 
         async function handleImageUpload(file, options = {}) {
