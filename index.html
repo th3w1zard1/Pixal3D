@@ -2096,6 +2096,7 @@
         }
 
         async function startGeneration() {
+            document.body.dataset.smokeGenerationRequested = 'true';
             if (!currentFile) return;
             if (isCpuStandby(lastRuntimeHealth)) {
                 showToast(
@@ -2119,6 +2120,7 @@
             // Clear old preview frames and 3D result
             generationResult = null;
             delete document.body.dataset.smokeGlbReady;
+            delete document.body.dataset.smokeGenerationRequested;
             document.getElementById('frame-container').innerHTML = '';
             document.getElementById('angle-slider').value = 0;
             document.getElementById('angle-display').textContent = '00';
