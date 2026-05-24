@@ -151,16 +151,28 @@ def run_generate(client: Any, sample: Path, session_id: str) -> dict[str, Any]:
     return {"generate_ok": True, "generate_result": result}
 
 
+def should_skip_warmup(health: dict[str, Any] | None) -> bool:
+    return bool(health and health.get("runtime_mode") == "zerogpu")
+
+
 def run_warmup_and_generate(base_url: str, sample: Path, session_id: str) -> dict[str, Any]:
     try:
         from gradio_client import Client
     except ImportError as exc:
         return gradio_client_import_error(exc)
 
-    client = Client(base_url.rstrip("/") + "/")
-    warmup = run_warmup(client, session_id)
-    if not warmup.get("warmup_ok"):
-        return {**warmup, "generate_ok": False}
+    base = base_url.rstrip("/") + "/"
+    client = Client(base)
+    health_status, health_body, _health_err = _fetch_json(base + "health", 30.0)
+    skip_warmup = should_skip_warmup(health_body if health_status == 200 else None)
+    warmup: dict[str, Any] = {
+        "warmup_skipped": skip_warmup,
+        "warmup_skip_reason": "runtime_mode=zerogpu matches hosted UI flow",
+    }
+    if not skip_warmup:
+        warmup = run_warmup(client, session_id)
+        if not warmup.get("warmup_ok"):
+            return {**warmup, "generate_ok": False}
     generate = run_generate(client, sample, session_id)
     return {**warmup, **generate}
 
@@ -174,9 +186,11 @@ Examples:
   python scripts/space_smoke.py --health-only --html-check
   python scripts/space_smoke.py --url https://th3w1zard1-pixal3d.hf.space/ --generate
 
-`--generate` calls /warmup_runtime before /generate_3d with ZeroGPU-safe defaults
-(512 resolution, 5 stage steps). Requires gradio_client — see scripts/smoke-requirements.txt.
-Anonymous cold runs may still hit GPU slice limits; sign in on the Space for reliable checks.
+`--generate` uses ZeroGPU-safe defaults (512 resolution, 5 stage steps). On hosted
+ZeroGPU it skips `/warmup_runtime` and calls `/generate_3d` directly, matching the
+browser UI. Other runtimes still warm up first. Requires gradio_client — see
+scripts/smoke-requirements.txt. Anonymous cold runs may still hit GPU slice limits;
+sign in on the Space for reliable checks.
         """.strip(),
     )
     parser.add_argument("--url", default=DEFAULT_SPACE_URL, help="Space base URL")

@@ -87,6 +87,8 @@ python3 -m venv .venv
 .venv/bin/python scripts/space_smoke.py --generate
 ```
 
+On hosted ZeroGPU, `--generate` skips `/warmup_runtime` and calls `/generate_3d` directly (same as the browser UI). Check `/health` for `rembg_model` to confirm the active rembg default after deploy.
+
 ### Release behavior
 
 The release workflow does not currently publish Python distribution artifacts. Even though the repo now has a `pyproject.toml` configuration hub, releases are still repository-centric rather than package-centric.
