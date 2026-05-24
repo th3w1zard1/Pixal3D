@@ -1547,13 +1547,13 @@
             startQueuePolling();
             try {
                 client = await Client.connect(window.location.origin);
+                window.__pixal3dClientReady = true;
+                window.__pixal3dRunGeneration = () => startGeneration();
                 setupUI();
                 loadSamples();
                 hideViewerError();
                 await refreshRuntimeStatus();
                 scheduleRuntimePollInterval(lastRuntimeHealth);
-                window.__pixal3dClientReady = true;
-                window.__pixal3dRunGeneration = () => startGeneration();
             } catch (err) {
                 console.error("Connection error:", err);
                 showToast("Connection failed. Try refreshing.");
