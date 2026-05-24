@@ -66,6 +66,27 @@ def check_health(base_url: str, timeout: float) -> dict[str, Any]:
     }
 
 
+def zerogpu_health_ok(health: dict[str, Any] | None) -> tuple[bool, str | None]:
+    """Assert recovery-critical fields when the hosted Space reports ZeroGPU mode."""
+    if not isinstance(health, dict) or health.get("runtime_mode") != "zerogpu":
+        return True, None
+    rembg = health.get("rembg_model") or ""
+    if "BiRefNet_lite" not in rembg:
+        return False, f"rembg_model expected BiRefNet_lite, got {rembg!r}"
+    prefetch = health.get("hub_prefetch_state")
+    if prefetch not in ("ready", "running"):
+        return False, f"hub_prefetch_state expected ready|running, got {prefetch!r}"
+    if health.get("cuda_mesh_operators") is not True:
+        return False, "cuda_mesh_operators is not true"
+    budgets = health.get("zerogpu_gpu_budgets")
+    if not isinstance(budgets, dict):
+        return False, "zerogpu_gpu_budgets missing"
+    cold = budgets.get("cold_generation_max_seconds")
+    if cold != 120:
+        return False, f"cold_generation_max_seconds expected 120, got {cold!r}"
+    return True, None
+
+
 def check_html(base_url: str, timeout: float) -> dict[str, Any]:
     status, html, err = _fetch_text(base_url.rstrip("/") + "/", timeout)
     if err or not html:
@@ -270,6 +291,14 @@ def main(argv: list[str] | None = None) -> int:
     summary["health_check"] = health
     health_ok = health["health_status"] == 200 and health["health"] is not None
     if not health_ok:
+        print(json.dumps(summary, indent=2))
+        return 1
+
+    z_ok, z_err = zerogpu_health_ok(health.get("health"))
+    summary["zerogpu_health_ok"] = z_ok
+    if z_err:
+        summary["zerogpu_health_error"] = z_err
+    if not z_ok:
         print(json.dumps(summary, indent=2))
         return 1
 
