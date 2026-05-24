@@ -1457,10 +1457,11 @@
         let currentStep = 1;
         let runtimePrimed = false;
         let lastRuntimeHealth = null;
+        let lastRuntimeReady = false;
         let lastObservedRuntimeMode = null;
         let runtimeStatusInterval = null;
         const RUNTIME_POLL_MS_DEFAULT = 15000;
-        const RUNTIME_POLL_MS_CPU_STANDBY = 5000;
+        const RUNTIME_POLL_MS_FAST = 5000;
 
         const MODES = [
             { name: "Normal", key: "normal" },
@@ -1737,12 +1738,22 @@
                 btn.title = health?.message || 'Waiting for GPU hardware. This page reloads automatically when ZeroGPU is ready.';
                 return;
             }
+            if (health?.runtime_mode !== 'zerogpu' && !lastRuntimeReady) {
+                btn.disabled = true;
+                btn.title = health?.message || 'Models are still warming. Generate unlocks when the runtime reports ready.';
+                return;
+            }
             btn.title = '';
             btn.disabled = !currentFile;
         }
 
         function scheduleRuntimePollInterval(health) {
-            const ms = isCpuStandby(health) ? RUNTIME_POLL_MS_CPU_STANDBY : RUNTIME_POLL_MS_DEFAULT;
+            let ms = RUNTIME_POLL_MS_DEFAULT;
+            if (isCpuStandby(health)) {
+                ms = RUNTIME_POLL_MS_FAST;
+            } else if (health?.runtime_mode !== 'zerogpu' && !lastRuntimeReady) {
+                ms = RUNTIME_POLL_MS_FAST;
+            }
             if (runtimeStatusInterval) clearInterval(runtimeStatusInterval);
             runtimeStatusInterval = setInterval(refreshRuntimeStatus, ms);
         }
@@ -1759,13 +1770,27 @@
 
         async function refreshRuntimeStatus() {
             try {
-                const resp = await fetch('/health', { cache: 'no-store' });
-                if (!resp.ok) return;
-                const data = await resp.json();
+                const [healthResp, readyResp] = await Promise.all([
+                    fetch('/health', { cache: 'no-store' }),
+                    fetch('/ready', { cache: 'no-store' }),
+                ]);
+                if (!healthResp.ok) return;
+                const data = await healthResp.json();
+                lastRuntimeReady = readyResp.ok;
+                if (!lastRuntimeReady) {
+                    try {
+                        const readyPayload = await readyResp.json();
+                        if (readyPayload.state) data.state = readyPayload.state;
+                        if (readyPayload.message) data.message = readyPayload.message;
+                    } catch (_) { /* ignore */ }
+                }
                 lastRuntimeHealth = data;
                 const badge = document.getElementById('runtime-status-badge');
                 const text = document.getElementById('runtime-status-text');
-                const state = data.state || (data.ready ? 'ready' : 'pending');
+                let state = data.state || (lastRuntimeReady ? 'ready' : 'pending');
+                if (!lastRuntimeReady && !isCpuStandby(data) && state === 'pending') {
+                    state = 'initializing';
+                }
                 const stateLabel = {
                     pending: 'Cold',
                     initializing: 'Warming',
@@ -1779,12 +1804,12 @@
                 if (isCpuStandby(data)) {
                     text.textContent = data.message
                         || 'This Space is on CPU standby while GPU hardware starts. Generate unlocks after ZeroGPU is ready.';
+                } else if (lastRuntimeReady) {
+                    text.textContent = 'Runtime is hot. Generation should start immediately unless the hosted queue is saturated.';
                 } else {
-                    text.textContent = data.ready
-                        ? 'Runtime is hot. Generation should start immediately unless the hosted queue is saturated.'
-                        : (data.message || 'The hosted runtime is cold. Generate will prime the model stack automatically.');
+                    text.textContent = data.message || 'Models are warming on the hosted GPU. Generate unlocks when ready.';
                 }
-                runtimePrimed = !!data.ready;
+                runtimePrimed = lastRuntimeReady;
                 applyZeroGpuHostedDefaults(data);
                 updateRuntimeBudgetHint(data);
                 updateGenerateAvailability(data);
@@ -2024,6 +2049,13 @@
             if (isCpuStandby(lastRuntimeHealth)) {
                 showToast(
                     lastRuntimeHealth?.message || 'Waiting for GPU hardware. This page reloads automatically when ZeroGPU is ready.',
+                    5200
+                );
+                return;
+            }
+            if (lastRuntimeHealth?.runtime_mode !== 'zerogpu' && !lastRuntimeReady) {
+                showToast(
+                    lastRuntimeHealth?.message || 'Models are still warming. Wait for the runtime to report ready.',
                     5200
                 );
                 return;
