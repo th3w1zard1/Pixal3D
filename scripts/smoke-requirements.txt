@@ -1,0 +1,2 @@
+# Optional deps for scripts/space_smoke.py --generate (not used by the hosted Space runtime).
+gradio_client>=1.4.0

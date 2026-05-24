@@ -78,7 +78,13 @@ For local or agent verification of the hosted Space without a browser:
 python scripts/space_smoke.py --health-only --html-check
 ```
 
-Use `--generate` only when ZeroGPU quota allows (see `AGENTS.md`).
+Use `--generate` only when ZeroGPU quota allows (see `AGENTS.md`). That path needs `gradio_client`:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r scripts/smoke-requirements.txt
+.venv/bin/python scripts/space_smoke.py --generate
+```
 
 ### Release behavior
 
