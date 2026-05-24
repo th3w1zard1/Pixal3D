@@ -104,9 +104,11 @@ MODES = [
 STEPS = 8
 ZEROGPU_MAX_DURATION_SECONDS = 120
 # Keep per-call reservations small so one cold generate fits typical free quota.
-ZEROGPU_WARMUP_DURATION_SECONDS = 50
-ZEROGPU_GENERATION_MAX_DURATION_SECONDS = 40
-ZEROGPU_EXTRACT_DURATION_SECONDS = 40
+# ZeroGPU may promote to xlarge (2x quota cost vs declared duration); cap accordingly.
+ZEROGPU_QUOTA_MULTIPLIER = 2
+ZEROGPU_WARMUP_DURATION_SECONDS = 25
+ZEROGPU_GENERATION_MAX_DURATION_SECONDS = 25
+ZEROGPU_EXTRACT_DURATION_SECONDS = 25
 ZEROGPU_MAX_RESOLUTION = 1024
 ZEROGPU_MAX_STAGE_STEPS = 5
 ZEROGPU_MAX_DECIMATION_TARGET = 500000
@@ -1344,7 +1346,7 @@ def generation_gpu_duration(
         )
         return min(
             ZEROGPU_GENERATION_MAX_DURATION_SECONDS,
-            max(35, 20 + total_steps * 2),
+            max(25, 15 + total_steps * 2),
         )
 
     # Cold model initialization is handled separately by `warmup_runtime`.
@@ -1392,6 +1394,10 @@ def runtime_payload() -> dict[str, object]:
             "extract_seconds": ZEROGPU_EXTRACT_DURATION_SECONDS,
             "max_texture_size": ZEROGPU_MAX_TEXTURE_SIZE,
             "max_stage_steps": ZEROGPU_MAX_STAGE_STEPS,
+            "quota_multiplier_note": (
+                "Hosted ZeroGPU may bill up to "
+                f"{ZEROGPU_QUOTA_MULTIPLIER}x the declared duration on xlarge."
+            ),
         }
 
     if runtime_mode == "cpu":
