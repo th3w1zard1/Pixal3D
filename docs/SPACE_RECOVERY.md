@@ -6,14 +6,14 @@ See also [post-recovery.md](post-recovery.md) for operator handoff after recover
 
 The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `039-*`).
 
-**Last CLI check (2026-05-24):** `./scripts/verify_hosted_space.sh` pass; `--generate` pass (~124s, `glb_path`, `extract_available: true`).
+**Last hosted check (2026-05-24, plan 053):** `./scripts/verify_hosted_space.sh` pass (health/HTML). **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`). **Last browser (2026-05-24, plan 053):** `load=done`, `generate=error` ZeroGPU quota (exit **1**, path verified).
 
 | Surface | Verification |
 |---------|----------------|
 | Backend `/generate_3d` (CLI) | **Pass** — anonymous cold run ~124s, `glb_path`, `extract_available: true` (2026-05-24) |
 | Health + HTML smoke | **Pass** — markers + ZeroGPU recovery fields (`BiRefNet_lite`, prefetch, 120s cold slice, `cuda_mesh_operators`) |
-| GitHub ↔ HF parity | **Pass** — `check_repo_parity.py` on `main` at `b6ce207` (2026-05-24, PR #34 merged) |
-| Browser gallery → GLB | **Pass** (2026-05-24, plan 051) — `./scripts/browser_glb_smoke.sh` sync gallery load + in-eval generate poll; exit **0** = GLB; **1** = explicit quota/error (verified); **2** timeout |
+| GitHub ↔ HF parity | **Pass** — `check_repo_parity.py` on `main` at `35a1c52` (2026-05-24, plan 053) |
+| Browser gallery → GLB | **Pass** (2026-05-24, plans 051/053) — `./scripts/browser_glb_smoke.sh` sync gallery load + in-eval generate poll; exit **0** = GLB; **1** = explicit quota/error (verified); **2** timeout |
 
 ## Verification order (agents)
 
