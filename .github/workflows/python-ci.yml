@@ -46,6 +46,7 @@ jobs:
           app_proxy.py
           space_bootstrap.py
           space_runtime.py
+          adapter_policy_runtime.py
           scripts/check_workflow_yaml.py
           scripts/resolve_hf_space_config.py
           scripts/ensure_hf_space.py
