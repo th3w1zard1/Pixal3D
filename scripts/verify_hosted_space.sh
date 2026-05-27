@@ -47,7 +47,9 @@ emit_summary_json() {
   export VERIFY_HEALTH_OK
   local summary_tmp
   summary_tmp="$(mktemp "${TMPDIR:-/tmp}/verify-gate-summary.XXXXXX")"
+  export VERIFY_GIT_HEAD="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"
   python3 <<'PY' >"$summary_tmp"
+import datetime
 import json
 import os
 
@@ -63,6 +65,11 @@ print(
     json.dumps(
         {
             "schema_version": "pixal3d-agent-gate/1",
+            "checked_at": datetime.datetime.now(datetime.timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "git_head": os.environ.get("VERIFY_GIT_HEAD") or None,
             "url": os.environ.get("VERIFY_SPACE_URL", ""),
             "parity_ok": parity_ok,
             "health_ok": health_ok,

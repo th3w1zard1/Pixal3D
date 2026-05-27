@@ -90,6 +90,9 @@ For local or agent verification of the hosted Space:
 # Parse gate JSON (progress is on stderr)
 ./scripts/agent_gate.sh 2>/dev/null | jq .
 
+# Persist gate JSON locally (gitignored under docs/gate-results/)
+./scripts/agent_gate.sh --write-summary docs/gate-results/latest.json
+
 # Equivalent explicit flags
 ./scripts/verify_hosted_space.sh --browser --summary-json
 ```

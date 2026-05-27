@@ -6,7 +6,7 @@ See also [post-recovery.md](post-recovery.md) for operator handoff after recover
 
 The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `039-*`).
 
-**Last gate (2026-05-24, plan 062):** `./scripts/agent_gate.sh --write-summary docs/gate-results/latest.json` — `overall_ok: true`, `browser_exit: 1` (quota verified). **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`).
+**Last gate (2026-05-24, plan 063):** `./scripts/agent_gate.sh --write-summary docs/gate-results/latest.json` — `overall_ok: true`, `browser_exit: 1`, `git_head` recorded. **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`).
 
 | Surface | Verification |
 |---------|----------------|
