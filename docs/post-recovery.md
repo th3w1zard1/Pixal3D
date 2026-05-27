@@ -14,7 +14,7 @@ Space recovery for the hosted ZeroGPU demo is **closed**. Use this page after me
 | [workflow-hygiene.md](workflow-hygiene.md) | Unified hygiene index and `pre_ship.sh` |
 | [README.md](../README.md) | ImageEZGen3D direction and runtime notes |
 | `docs/plans/2026-05-24-027-*` … `040-*` | Recovery implementation plans (archived on `main`) |
-| `docs/plans/2026-05-24-067-*` … `075-*` | Workflow hygiene + adapter policy runtime plans |
+| `docs/plans/2026-05-24-067-*` … `077-*` | Workflow hygiene, adapter policy, API manifests |
 
 ## Verification order
 

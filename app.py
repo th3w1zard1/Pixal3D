@@ -1484,8 +1484,10 @@ def runtime_payload() -> dict[str, object]:
         )
 
     from adapter_policy_runtime import policy_status_snapshot
+    from generation_run_manifest import git_short_head
 
     payload.update(policy_status_snapshot())
+    payload["repo_git_head"] = git_short_head()
     return payload
 
 
