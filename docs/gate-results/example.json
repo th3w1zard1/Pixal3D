@@ -1,11 +1,15 @@
 {
-  "schema_version": "pixal3d-agent-gate/2",
-  "checked_at": "2026-05-24T12:00:00Z",
-  "git_head": "c616af6",
+  "schema_version": "pixal3d-agent-gate/3",
+  "checked_at": "2026-05-27T17:00:00Z",
+  "git_head": "28c5e40",
   "url": "https://th3w1zard1-pixal3d.hf.space/",
   "parity_ok": true,
   "health_ok": true,
   "browser_ran": true,
   "browser_exit": 1,
+  "space_repo_git_head": "28c5e40",
+  "repo_git_head_match": true,
+  "adapter_policy_ok": true,
+  "adapter_policy_enabled_count": 2,
   "overall_ok": true
 }

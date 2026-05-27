@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a pixal3d-agent-gate/2 JSON summary file."""
+"""Validate a pixal3d-agent-gate/3 JSON summary file."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = "pixal3d-agent-gate/2"
+SCHEMA_VERSION = "pixal3d-agent-gate/3"
 REQUIRED_KEYS = (
     "schema_version",
     "checked_at",
@@ -19,6 +19,10 @@ REQUIRED_KEYS = (
     "health_ok",
     "browser_ran",
     "browser_exit",
+    "space_repo_git_head",
+    "repo_git_head_match",
+    "adapter_policy_ok",
+    "adapter_policy_enabled_count",
     "overall_ok",
 )
 
@@ -53,11 +57,31 @@ def validate_gate_summary(data: Any) -> list[str]:
     if "url" in data and not isinstance(data.get("url"), str):
         errors.append("url must be a string")
 
+    if "space_repo_git_head" in data and data["space_repo_git_head"] is not None and not isinstance(
+        data["space_repo_git_head"], str
+    ):
+        errors.append("space_repo_git_head must be a string or null")
+
+    if "repo_git_head_match" in data and data["repo_git_head_match"] is not None and not isinstance(
+        data["repo_git_head_match"], bool
+    ):
+        errors.append("repo_git_head_match must be a boolean or null")
+
+    if "adapter_policy_ok" in data and data["adapter_policy_ok"] is not None and not isinstance(
+        data["adapter_policy_ok"], bool
+    ):
+        errors.append("adapter_policy_ok must be a boolean or null")
+
+    if "adapter_policy_enabled_count" in data and data[
+        "adapter_policy_enabled_count"
+    ] is not None and not isinstance(data["adapter_policy_enabled_count"], int):
+        errors.append("adapter_policy_enabled_count must be an integer or null")
+
     return errors
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Validate pixal3d-agent-gate/2 JSON summary.")
+    parser = argparse.ArgumentParser(description="Validate pixal3d-agent-gate/3 JSON summary.")
     parser.add_argument("path", type=Path, help="Gate summary JSON file")
     args = parser.parse_args(argv)
 

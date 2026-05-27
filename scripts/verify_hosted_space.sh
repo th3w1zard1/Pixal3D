@@ -14,6 +14,28 @@ SPACE_URL="${PIXAL3D_SPACE_URL:-https://th3w1zard1-pixal3d.hf.space/}"
 VERIFY_BROWSER_EXIT=""
 VERIFY_PARITY_OK=0
 VERIFY_HEALTH_OK=0
+VERIFY_SPACE_REPO_GIT_HEAD=""
+VERIFY_ADAPTER_POLICY_OK=""
+VERIFY_ADAPTER_POLICY_ENABLED_COUNT=""
+
+capture_health_gate_fields() {
+  local health_tmp
+  health_tmp="$(mktemp "${TMPDIR:-/tmp}/verify-health.XXXXXX")"
+  if ! curl -sf "${SPACE_URL%/}/health" >"$health_tmp"; then
+    rm -f "$health_tmp"
+    return
+  fi
+  VERIFY_SPACE_REPO_GIT_HEAD="$(
+    python3 -c "import json; d=json.load(open('$health_tmp')); print(d.get('repo_git_head') or '')"
+  )"
+  VERIFY_ADAPTER_POLICY_OK="$(
+    python3 -c "import json; d=json.load(open('$health_tmp')); v=d.get('adapter_policy_ok'); print('true' if v is True else 'false' if v is False else '')"
+  )"
+  VERIFY_ADAPTER_POLICY_ENABLED_COUNT="$(
+    python3 -c "import json; d=json.load(open('$health_tmp')); c=d.get('adapter_policy_enabled_count'); print(c if isinstance(c, int) else '')"
+  )"
+  rm -f "$health_tmp"
+}
 
 log() {
   if [[ "$SUMMARY_JSON" -eq 1 ]]; then
@@ -48,6 +70,9 @@ emit_summary_json() {
   local summary_tmp
   summary_tmp="$(mktemp "${TMPDIR:-/tmp}/verify-gate-summary.XXXXXX")"
   export VERIFY_GIT_HEAD="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+  export VERIFY_SPACE_REPO_GIT_HEAD
+  export VERIFY_ADAPTER_POLICY_OK
+  export VERIFY_ADAPTER_POLICY_ENABLED_COUNT
   python3 <<'PY' >"$summary_tmp"
 import datetime
 import json
@@ -58,23 +83,47 @@ raw_exit = os.environ.get("VERIFY_BROWSER_EXIT", "")
 browser_exit = int(raw_exit) if raw_exit != "" else None
 parity_ok = os.environ.get("VERIFY_PARITY_OK") == "1"
 health_ok = os.environ.get("VERIFY_HEALTH_OK") == "1"
-overall_ok = parity_ok and health_ok and (
-    not browser_ran or browser_exit in (0, 1)
+local_head = os.environ.get("VERIFY_GIT_HEAD") or None
+space_repo_git_head = os.environ.get("VERIFY_SPACE_REPO_GIT_HEAD") or None
+if space_repo_git_head == "":
+    space_repo_git_head = None
+repo_git_head_match = None
+if space_repo_git_head and local_head:
+    repo_git_head_match = space_repo_git_head == local_head
+raw_adapter_ok = os.environ.get("VERIFY_ADAPTER_POLICY_OK", "")
+if raw_adapter_ok == "true":
+    adapter_policy_ok = True
+elif raw_adapter_ok == "false":
+    adapter_policy_ok = False
+else:
+    adapter_policy_ok = None
+raw_enabled = os.environ.get("VERIFY_ADAPTER_POLICY_ENABLED_COUNT", "")
+adapter_policy_enabled_count = int(raw_enabled) if raw_enabled.isdigit() else None
+overall_ok = (
+    parity_ok
+    and health_ok
+    and (repo_git_head_match is not False)
+    and (adapter_policy_ok is not False)
+    and (not browser_ran or browser_exit in (0, 1))
 )
 print(
     json.dumps(
         {
-            "schema_version": "pixal3d-agent-gate/2",
+            "schema_version": "pixal3d-agent-gate/3",
             "checked_at": datetime.datetime.now(datetime.timezone.utc)
             .replace(microsecond=0)
             .isoformat()
             .replace("+00:00", "Z"),
-            "git_head": os.environ.get("VERIFY_GIT_HEAD") or None,
+            "git_head": local_head,
             "url": os.environ.get("VERIFY_SPACE_URL", ""),
             "parity_ok": parity_ok,
             "health_ok": health_ok,
             "browser_ran": browser_ran,
             "browser_exit": browser_exit,
+            "space_repo_git_head": space_repo_git_head,
+            "repo_git_head_match": repo_git_head_match,
+            "adapter_policy_ok": adapter_policy_ok,
+            "adapter_policy_enabled_count": adapter_policy_enabled_count,
             "overall_ok": overall_ok,
         },
         indent=2,
@@ -137,6 +186,7 @@ else
   python3 scripts/space_smoke.py --url "$SPACE_URL" --health-only --html-check
 fi
 VERIFY_HEALTH_OK=1
+capture_health_gate_fields
 
 if [[ "$RUN_BROWSER" -eq 1 ]]; then
   log "==> Browser GLB smoke (run before --generate in the same session)"
