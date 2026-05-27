@@ -55,7 +55,9 @@ jobs:
           scripts/validate_gate_json.py
           scripts/validate_generation_manifest.py
           scripts/validate_adapter_policy.py
+          scripts/validate_generation_run_json.py
           scripts/check_adapter_policy.py
+          generation_run_manifest.py
       - name: Validate agent gate example JSON
         run: python scripts/validate_gate_json.py docs/gate-results/example.json
       - name: Validate generation manifest example JSON
@@ -64,6 +66,8 @@ jobs:
         run: python scripts/validate_adapter_policy.py docs/adapters/policy.example.json
       - name: Adapter policy check smoke
         run: python scripts/check_adapter_policy.py
+      - name: Validate generation run example JSON
+        run: python scripts/validate_generation_run_json.py docs/generation-runs/example.json
 
   space-live-smoke:
     runs-on: ubuntu-latest

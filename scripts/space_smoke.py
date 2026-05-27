@@ -170,6 +170,19 @@ def generation_has_deliverable(payload: Any) -> bool:
     return isinstance(render_paths, dict) and bool(render_paths)
 
 
+def generation_run_manifest_ok(payload: Any) -> tuple[bool, str | None]:
+    if not isinstance(payload, dict):
+        return False, "generate result is not a dict"
+    manifest = payload.get("generation_run")
+    if not isinstance(manifest, dict):
+        return False, "missing generation_run manifest on generate result"
+    if manifest.get("schema_version") != "pixal3d-generation-run/1":
+        return False, f"unexpected generation_run schema: {manifest.get('schema_version')!r}"
+    if not manifest.get("run_id"):
+        return False, "generation_run.run_id is empty"
+    return True, None
+
+
 def run_generate(client: Any, sample: Path, session_id: str, base_url: str = DEFAULT_SPACE_URL) -> dict[str, Any]:
     if not sample.is_file():
         return {"generate_ok": False, "generate_error": f"sample not found: {sample}"}
@@ -228,6 +241,13 @@ def run_generate(client: Any, sample: Path, session_id: str, base_url: str = DEF
         return {
             "generate_ok": False,
             "generate_error": "generate_3d returned glb_path but extract_available=false",
+            "generate_result": result,
+        }
+    mr_ok, mr_err = generation_run_manifest_ok(result)
+    if not mr_ok:
+        return {
+            "generate_ok": False,
+            "generate_error": mr_err,
             "generate_result": result,
         }
     return {"generate_ok": True, "generate_result": result}

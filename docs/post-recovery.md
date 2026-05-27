@@ -9,6 +9,7 @@ Space recovery for the hosted ZeroGPU demo is **closed**. Use this page after me
 | [SPACE_RECOVERY.md](SPACE_RECOVERY.md) | Verification matrix, operator commands, browser checklist |
 | [gate-results/README.md](gate-results/README.md) | Agent gate JSON schema, `example.json`, optional `latest.json` |
 | [generation-manifests/README.md](generation-manifests/README.md) | CLI `--generate` smoke manifest schema, `example.json`, optional `latest.json` |
+| [generation-runs/README.md](generation-runs/README.md) | API `generation_run` manifest on successful `/generate_3d` |
 | [adapters/README.md](adapters/README.md) | Adapter policy stub (`policy.example.json`, `check_adapter_policy.py`) |
 | [workflow-hygiene.md](workflow-hygiene.md) | Unified hygiene index and `pre_ship.sh` |
 | [README.md](../README.md) | ImageEZGen3D direction and runtime notes |

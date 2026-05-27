@@ -1293,7 +1293,11 @@ def _generate_3d_impl(
         result["message"] = " ".join(message_parts)
 
     _finish_progress()
-    return result
+    from generation_run_manifest import attach_generation_run_manifest
+
+    return attach_generation_run_manifest(
+        session_id, result, rembg_model=runtime_config.rembg_model
+    )
 
 
 def _extract_glb_impl(
