@@ -6,7 +6,7 @@ See also [post-recovery.md](post-recovery.md) for operator handoff after recover
 
 The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `039-*`).
 
-**Last gate (2026-05-24, plan 057):** `./scripts/verify_hosted_space.sh --browser --summary-json` — `overall_ok: true`, `browser_exit: 1` (quota, path verified). **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`).
+**Last gate (2026-05-24, plan 058):** `./scripts/verify_hosted_space.sh --browser --summary-json` — `parity_ok`/`health_ok`/`overall_ok: true`, `browser_exit: 1` (quota, path verified). **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`).
 
 | Surface | Verification |
 |---------|----------------|
@@ -34,8 +34,9 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 ## Operator commands
 
 ```bash
-./scripts/verify_hosted_space.sh
-./scripts/verify_hosted_space.sh --generate   # optional; uses ZeroGPU quota
+./scripts/verify_hosted_space.sh                              # parity + health/HTML
+./scripts/verify_hosted_space.sh --browser --summary-json     # recommended agent gate
+./scripts/verify_hosted_space.sh --generate                   # optional; uses ZeroGPU quota
 ```
 
 - **CI (manual):** GitHub Actions → **Python CI** → **Run workflow** → `space-generate-smoke` (`--generate`, ~2–3 min, uses quota).

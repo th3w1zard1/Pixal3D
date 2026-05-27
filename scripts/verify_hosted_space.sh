@@ -11,6 +11,8 @@ RUN_BROWSER=0
 SUMMARY_JSON=0
 SPACE_URL="${PIXAL3D_SPACE_URL:-https://th3w1zard1-pixal3d.hf.space/}"
 VERIFY_BROWSER_EXIT=""
+VERIFY_PARITY_OK=0
+VERIFY_HEALTH_OK=0
 
 usage() {
   cat <<'EOF'
@@ -30,6 +32,8 @@ emit_summary_json() {
   export VERIFY_SPACE_URL="$SPACE_URL"
   export VERIFY_BROWSER_RAN="$RUN_BROWSER"
   export VERIFY_BROWSER_EXIT
+  export VERIFY_PARITY_OK
+  export VERIFY_HEALTH_OK
   python3 <<'PY'
 import json
 import os
@@ -37,8 +41,8 @@ import os
 browser_ran = os.environ.get("VERIFY_BROWSER_RAN") == "1"
 raw_exit = os.environ.get("VERIFY_BROWSER_EXIT", "")
 browser_exit = int(raw_exit) if raw_exit != "" else None
-parity_ok = True
-health_ok = True
+parity_ok = os.environ.get("VERIFY_PARITY_OK") == "1"
+health_ok = os.environ.get("VERIFY_HEALTH_OK") == "1"
 overall_ok = parity_ok and health_ok and (
     not browser_ran or browser_exit in (0, 1)
 )
@@ -80,9 +84,11 @@ fi
 
 echo "==> Repo parity (github vs HF Space)"
 python3 scripts/check_repo_parity.py
+VERIFY_PARITY_OK=1
 
 echo "==> Live health + HTML smoke: ${SPACE_URL}"
 python3 scripts/space_smoke.py --url "$SPACE_URL" --health-only --html-check
+VERIFY_HEALTH_OK=1
 
 if [[ "$RUN_BROWSER" -eq 1 ]]; then
   echo "==> Browser GLB smoke (run before --generate in the same session)"
