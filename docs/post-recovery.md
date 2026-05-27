@@ -15,10 +15,11 @@ Space recovery for the hosted ZeroGPU demo is **closed**. Use this page after me
 
 ## Verification order
 
-1. `./scripts/agent_gate.sh` — canonical combined gate (stdout JSON, `schema_version: pixal3d-agent-gate/2`; parse with `2>/dev/null | jq -e .overall_ok`). Browser subprocess exit **1** with explicit ZeroGPU quota copy is a verified pass when `overall_ok` is true.
-2. `./scripts/verify_hosted_space.sh --browser --summary-json` — equivalent; use when you need other `verify_hosted_space.sh` flags in the same invocation.
-3. Or split: `./scripts/verify_hosted_space.sh` then `./scripts/browser_glb_smoke.sh` before any generate smoke in the same session.
-4. `./scripts/verify_hosted_space.sh --generate` — only after browser, or on a fresh quota window (never combine `--browser` and `--generate`).
+1. `./scripts/workflow_hygiene.sh` — static checks only (schemas, adapter policy stub, workflow YAML).
+2. `./scripts/agent_gate.sh` — canonical combined gate (stdout JSON, `schema_version: pixal3d-agent-gate/2`; parse with `2>/dev/null | jq -e .overall_ok`). Browser subprocess exit **1** with explicit ZeroGPU quota copy is a verified pass when `overall_ok` is true.
+3. `./scripts/verify_hosted_space.sh --browser --summary-json` — equivalent; use when you need other `verify_hosted_space.sh` flags in the same invocation.
+4. Or split: `./scripts/verify_hosted_space.sh` then `./scripts/browser_glb_smoke.sh` before any generate smoke in the same session.
+5. `./scripts/verify_hosted_space.sh --generate` — only after browser, or on a fresh quota window (never combine `--browser` and `--generate`).
 
 ## What to build next
 

@@ -26,6 +26,8 @@ python3 scripts/check_adapter_policy.py 2>/dev/null | jq -e .policy_ok
 
 Use `--policy PATH` for a non-default file.
 
+Included in `./scripts/workflow_hygiene.sh` (static bundle before `agent_gate.sh`).
+
 ## Adapter entry shape
 
 Each object in `adapters` requires `id` (string), `license_spdx` (string or null), and `enabled` (boolean). Enabled adapters must set a non-empty `license_spdx`.
