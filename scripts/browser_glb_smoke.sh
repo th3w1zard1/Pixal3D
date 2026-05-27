@@ -149,29 +149,39 @@ if [[ "$load_result" != "done" ]]; then
 fi
 
 echo "==> Generate + GLB poll in-page (max ${GENERATE_WAIT_SEC}s)"
-gen_result="$(ab_text "(async () => {
-  const glbReady = () => {
-    if (document.body?.dataset?.smokeGlbReady === 'true') return true;
-    const step3 = document.getElementById('step-3')?.classList.contains('active');
-    const extract = document.getElementById('extract-btn');
-    const extractOn = extract && (extract.style.display === 'flex' || extract.style.display === 'block');
-    const viewer = document.getElementById('main-3d-viewer');
-    const viewerOn = viewer && viewer.style.visibility !== 'hidden' && (viewer.src || '').length > 8;
-    return !!(step3 && extractOn && viewerOn);
-  };
-  if (typeof window.__pixal3dRunGeneration !== 'function') return 'no-generation-hook';
-  window.__pixal3dRunGeneration();
-  const deadline = Date.now() + ${GENERATE_WAIT_SEC}000;
-  while (Date.now() < deadline) {
-    if (document.getElementById('viewer-error')?.classList.contains('show')) {
-      const msg = document.getElementById('viewer-error-message')?.textContent?.trim() || 'viewer-error';
-      return 'error:' + msg;
-    }
-    if (glbReady()) return 'glb-ready';
-    await new Promise((r) => setTimeout(r, 5000));
-  }
-  return 'timeout:glb';
-})()")"
+if ! ab_bool "typeof window.__pixal3dRunGeneration === 'function'"; then
+  gen_result="no-generation-hook"
+else
+  ab eval "window.__pixal3dRunGeneration()" >/dev/null 2>&1 || true
+  gen_result="pending"
+  gen_deadline=$(( $(date +%s) + GENERATE_WAIT_SEC ))
+  while [[ $(date +%s) -lt $gen_deadline ]]; do
+    gen_result="$(ab_text "(() => {
+      if (document.getElementById('viewer-error')?.classList.contains('show')) {
+        const msg = document.getElementById('viewer-error-message')?.textContent?.trim() || 'viewer-error';
+        return 'error:' + msg;
+      }
+      if (document.body?.dataset?.smokeGlbReady === 'true') return 'glb-ready';
+      const step3 = document.getElementById('step-3')?.classList.contains('active');
+      const extract = document.getElementById('extract-btn');
+      const extractOn = extract && (extract.style.display === 'flex' || extract.style.display === 'block');
+      const viewer = document.getElementById('main-3d-viewer');
+      const viewerOn = viewer && viewer.style.visibility !== 'hidden' && (viewer.src || '').length > 8;
+      if (step3 && extractOn && viewerOn) return 'glb-ready';
+      return 'pending';
+    })()")"
+    if [[ -z "$gen_result" ]]; then
+      gen_result="pending"
+    fi
+    if [[ "$gen_result" == "glb-ready" || "$gen_result" == error:* ]]; then
+      break
+    fi
+    sleep 5
+  done
+  if [[ "$gen_result" == "pending" ]]; then
+    gen_result="timeout:glb"
+  fi
+fi
 
 echo "browser_glb_smoke: generate=${gen_result}"
 if [[ "$gen_result" == "glb-ready" ]]; then

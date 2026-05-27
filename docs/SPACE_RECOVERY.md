@@ -6,20 +6,20 @@ See also [post-recovery.md](post-recovery.md) for operator handoff after recover
 
 The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `039-*`).
 
-**Last hosted check (2026-05-24, plan 053):** `./scripts/verify_hosted_space.sh` pass (health/HTML). **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`). **Last browser (2026-05-24, plan 053):** `load=done`, `generate=error` ZeroGPU quota (exit **1**, path verified).
+**Last gate (2026-05-24, plan 054):** `./scripts/verify_hosted_space.sh --browser` — health/HTML pass; browser `load=done`, quota exit **1** path verified. **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`).
 
 | Surface | Verification |
 |---------|----------------|
 | Backend `/generate_3d` (CLI) | **Pass** — anonymous cold run ~124s, `glb_path`, `extract_available: true` (2026-05-24) |
 | Health + HTML smoke | **Pass** — markers + ZeroGPU recovery fields (`BiRefNet_lite`, prefetch, 120s cold slice, `cuda_mesh_operators`) |
-| GitHub ↔ HF parity | **Pass** — `check_repo_parity.py` on `main` at `35a1c52` (2026-05-24, plan 053) |
-| Browser gallery → GLB | **Pass** (2026-05-24, plans 051/053) — `./scripts/browser_glb_smoke.sh` sync gallery load + in-eval generate poll; exit **0** = GLB; **1** = explicit quota/error (verified); **2** timeout |
+| GitHub ↔ HF parity | **Pass** — `check_repo_parity.py` on `main` (sync after each push) |
+| Browser gallery → GLB | **Pass** (2026-05-24, plans 051/054) — `./scripts/browser_glb_smoke.sh` or `verify_hosted_space.sh --browser`; exit **0** = GLB; **1** = explicit quota/error (verified); **2** timeout |
 
 ## Verification order (agents)
 
-1. `./scripts/verify_hosted_space.sh` (parity + health/HTML)
-2. **Browser** (before `--generate` in the same session): gallery `assets/images/0_img.png` → Generate at 512 → step 3 GLB or explicit quota/error copy
-3. `./scripts/verify_hosted_space.sh --generate` only after browser, or on another day
+1. `./scripts/verify_hosted_space.sh` (parity + health/HTML), or `./scripts/verify_hosted_space.sh --browser` to include automated browser smoke in the same run
+2. **Browser** (if not using `--browser`): gallery `assets/images/0_img.png` → Generate at 512 → step 3 GLB or explicit quota/error copy — must run before `--generate` in the same session
+3. `./scripts/verify_hosted_space.sh --generate` only after browser, or on another day (never `--browser --generate` together)
 
 ## What was fixed
 
