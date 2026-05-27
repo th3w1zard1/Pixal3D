@@ -20,7 +20,7 @@ Space recovery for the hosted ZeroGPU demo is **closed**. Use this page after me
 
 1. `./scripts/pre_ship.sh` — static hygiene then agent gate (preferred).
 2. Or `./scripts/workflow_hygiene.sh` then `./scripts/agent_gate.sh` separately.
-3. `./scripts/agent_gate.sh` alone — when static checks already passed (stdout JSON, `schema_version: pixal3d-agent-gate/2`; parse with `2>/dev/null | jq -e .overall_ok`). Browser subprocess exit **1** with explicit ZeroGPU quota copy is a verified pass when `overall_ok` is true.
+3. `./scripts/agent_gate.sh` alone — when static checks already passed (stdout JSON, `schema_version: pixal3d-agent-gate/3`; parse with `2>/dev/null | jq -e .overall_ok`). Browser subprocess exit **1** with explicit ZeroGPU quota copy is a verified pass when `overall_ok` is true.
 4. `./scripts/verify_hosted_space.sh --browser --summary-json` — equivalent; use when you need other `verify_hosted_space.sh` flags in the same invocation.
 5. Or split: `./scripts/verify_hosted_space.sh` then `./scripts/browser_glb_smoke.sh` before any generate smoke in the same session.
 6. `./scripts/verify_hosted_space.sh --generate` — only after browser, or on a fresh quota window (never combine `--browser` and `--generate`).
