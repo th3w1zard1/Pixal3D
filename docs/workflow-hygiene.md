@@ -33,6 +33,7 @@ Persist agent gate JSON:
 |------|--------|----------------|
 | Agent gate | `pixal3d-agent-gate/2` | [gate-results/README.md](gate-results/README.md), [gate-results/example.json](gate-results/example.json) |
 | CLI generate smoke | `pixal3d-generation-smoke/1` | [generation-manifests/README.md](generation-manifests/README.md) |
+| API `/generate_3d` | `pixal3d-generation-run/1` | [generation-runs/README.md](generation-runs/README.md) (`generation_run` field) |
 | Adapter policy (stub) | `pixal3d-adapter-policy/1` | [adapters/README.md](adapters/README.md) |
 
 ## Scripts

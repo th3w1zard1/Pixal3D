@@ -49,6 +49,7 @@ PYTHON="${PYTHON:-python3}"
 run_step "${PYTHON}" scripts/validate_gate_json.py docs/gate-results/example.json
 run_step "${PYTHON}" scripts/validate_generation_manifest.py docs/generation-manifests/example.json
 run_step "${PYTHON}" scripts/validate_adapter_policy.py docs/adapters/policy.example.json
+run_step "${PYTHON}" scripts/validate_generation_run_json.py docs/generation-runs/example.json
 run_step "${PYTHON}" scripts/check_adapter_policy.py >/dev/null
 if "${PYTHON}" -c "import yaml" 2>/dev/null; then
   run_step "${PYTHON}" scripts/check_workflow_yaml.py

@@ -1,0 +1,13 @@
+{
+  "schema_version": "pixal3d-generation-run/1",
+  "run_id": "00000000-0000-4000-8000-000000000001",
+  "finished_at": "2026-05-27T16:00:00Z",
+  "git_head": "ee0d77d",
+  "session_id": "example-session",
+  "glb_path": "/tmp/pixal3d/result_example.glb",
+  "extract_available": true,
+  "preview_available": false,
+  "rembg_model": "ZhengPeng7/BiRefNet_lite",
+  "requested_resolution": 512,
+  "effective_resolution": 512
+}
