@@ -85,6 +85,7 @@ PY
   if [[ -n "$SUMMARY_WRITE_PATH" ]]; then
     mkdir -p "$(dirname "$SUMMARY_WRITE_PATH")"
     cp "$summary_tmp" "$SUMMARY_WRITE_PATH"
+    python3 "${ROOT}/scripts/validate_gate_json.py" "$SUMMARY_WRITE_PATH"
   fi
   python3 -c "import json,sys; d=json.load(open('$summary_tmp')); sys.exit(0 if d.get('overall_ok') else 1)"
   local gate_exit=$?

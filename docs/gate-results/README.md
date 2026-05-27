@@ -13,3 +13,11 @@ Parse without writing a file:
 ```bash
 ./scripts/agent_gate.sh 2>/dev/null | jq .
 ```
+
+Validate a saved summary:
+
+```bash
+python3 scripts/validate_gate_json.py docs/gate-results/latest.json
+```
+
+`--write-summary` runs this validator automatically after writing the file.
