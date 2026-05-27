@@ -84,10 +84,10 @@ For local or agent verification of the hosted Space:
 # Parity + health/HTML only (no agent-browser)
 ./scripts/verify_hosted_space.sh
 
-# Combined gate: parity + health/HTML + browser default-sample E2E (needs agent-browser)
-./scripts/verify_hosted_space.sh --browser
+# Recommended agent gate (parity + health/HTML + browser + JSON summary; needs agent-browser)
+./scripts/agent_gate.sh
 
-# Same gate with machine-readable JSON summary (for agents/CI wrappers)
+# Equivalent explicit flags
 ./scripts/verify_hosted_space.sh --browser --summary-json
 ```
 

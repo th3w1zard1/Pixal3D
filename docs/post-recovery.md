@@ -12,8 +12,8 @@ Space recovery for the hosted ZeroGPU demo is **closed**. Use this page after me
 
 ## Verification order
 
-1. `./scripts/verify_hosted_space.sh --browser --summary-json` — combined agent gate with machine-readable result (`overall_ok`, `browser_exit`; exit **1** with explicit ZeroGPU quota copy is a verified pass).
-2. `./scripts/verify_hosted_space.sh --browser` — same gate without JSON (requires `agent-browser`).
+1. `./scripts/agent_gate.sh` — canonical combined gate (parity + health/HTML + browser + JSON summary; exit **1** with explicit ZeroGPU quota copy is a verified pass).
+2. `./scripts/verify_hosted_space.sh --browser --summary-json` — equivalent; use when you need other `verify_hosted_space.sh` flags in the same invocation.
 3. Or split: `./scripts/verify_hosted_space.sh` then `./scripts/browser_glb_smoke.sh` before any generate smoke in the same session.
 4. `./scripts/verify_hosted_space.sh --generate` — only after browser, or on a fresh quota window (never combine `--browser` and `--generate`).
 

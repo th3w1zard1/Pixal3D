@@ -6,7 +6,7 @@ See also [post-recovery.md](post-recovery.md) for operator handoff after recover
 
 The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `039-*`).
 
-**Last gate (2026-05-24, plan 058):** `./scripts/verify_hosted_space.sh --browser --summary-json` — `parity_ok`/`health_ok`/`overall_ok: true`, `browser_exit: 1` (quota, path verified). **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`).
+**Last gate (2026-05-24, plan 059):** `./scripts/agent_gate.sh` — `overall_ok: true`, `browser_exit: 1` (quota, path verified). **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`).
 
 | Surface | Verification |
 |---------|----------------|
@@ -17,9 +17,10 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 
 ## Verification order (agents)
 
-1. `./scripts/verify_hosted_space.sh` (parity + health/HTML), or `./scripts/verify_hosted_space.sh --browser` to include automated browser smoke in the same run
-2. **Browser** (if not using `--browser`): gallery `assets/images/0_img.png` → Generate at 512 → step 3 GLB or explicit quota/error copy — must run before `--generate` in the same session
-3. `./scripts/verify_hosted_space.sh --generate` only after browser, or on another day (never `--browser --generate` together)
+1. `./scripts/agent_gate.sh` — recommended: parity + health/HTML + browser + JSON summary (`overall_ok`, `browser_exit`)
+2. Or `./scripts/verify_hosted_space.sh` (health/HTML only) / `--browser` without JSON
+3. Manual browser only if not using the gate: gallery `assets/images/0_img.png` at 512 → Generate — before `--generate` in the same session
+4. `./scripts/verify_hosted_space.sh --generate` only after browser, or on another day (never `--browser` and `--generate` together)
 
 ## What was fixed
 
@@ -34,8 +35,8 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 ## Operator commands
 
 ```bash
-./scripts/verify_hosted_space.sh                              # parity + health/HTML
-./scripts/verify_hosted_space.sh --browser --summary-json     # recommended agent gate
+./scripts/agent_gate.sh                                       # recommended agent gate
+./scripts/verify_hosted_space.sh                              # parity + health/HTML only
 ./scripts/verify_hosted_space.sh --generate                   # optional; uses ZeroGPU quota
 ```
 
