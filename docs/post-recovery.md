@@ -10,16 +10,18 @@ Space recovery for the hosted ZeroGPU demo is **closed**. Use this page after me
 | [gate-results/README.md](gate-results/README.md) | Agent gate JSON schema, `example.json`, optional `latest.json` |
 | [generation-manifests/README.md](generation-manifests/README.md) | CLI `--generate` smoke manifest schema, `example.json`, optional `latest.json` |
 | [adapters/README.md](adapters/README.md) | Adapter policy stub (`policy.example.json`, `check_adapter_policy.py`) |
+| [workflow-hygiene.md](workflow-hygiene.md) | Unified hygiene index and `pre_ship.sh` |
 | [README.md](../README.md) | ImageEZGen3D direction and runtime notes |
 | `docs/plans/2026-05-24-027-*` … `040-*` | Recovery implementation plans (archived on `main`) |
 
 ## Verification order
 
-1. `./scripts/workflow_hygiene.sh` — static checks only (schemas, adapter policy stub, workflow YAML).
-2. `./scripts/agent_gate.sh` — canonical combined gate (stdout JSON, `schema_version: pixal3d-agent-gate/2`; parse with `2>/dev/null | jq -e .overall_ok`). Browser subprocess exit **1** with explicit ZeroGPU quota copy is a verified pass when `overall_ok` is true.
-3. `./scripts/verify_hosted_space.sh --browser --summary-json` — equivalent; use when you need other `verify_hosted_space.sh` flags in the same invocation.
-4. Or split: `./scripts/verify_hosted_space.sh` then `./scripts/browser_glb_smoke.sh` before any generate smoke in the same session.
-5. `./scripts/verify_hosted_space.sh --generate` — only after browser, or on a fresh quota window (never combine `--browser` and `--generate`).
+1. `./scripts/pre_ship.sh` — static hygiene then agent gate (preferred).
+2. Or `./scripts/workflow_hygiene.sh` then `./scripts/agent_gate.sh` separately.
+3. `./scripts/agent_gate.sh` alone — when static checks already passed (stdout JSON, `schema_version: pixal3d-agent-gate/2`; parse with `2>/dev/null | jq -e .overall_ok`). Browser subprocess exit **1** with explicit ZeroGPU quota copy is a verified pass when `overall_ok` is true.
+4. `./scripts/verify_hosted_space.sh --browser --summary-json` — equivalent; use when you need other `verify_hosted_space.sh` flags in the same invocation.
+5. Or split: `./scripts/verify_hosted_space.sh` then `./scripts/browser_glb_smoke.sh` before any generate smoke in the same session.
+6. `./scripts/verify_hosted_space.sh --generate` — only after browser, or on a fresh quota window (never combine `--browser` and `--generate`).
 
 ## What to build next
 

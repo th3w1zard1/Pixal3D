@@ -84,11 +84,12 @@ For local or agent verification of the hosted Space:
 # Parity + health/HTML only (no agent-browser)
 ./scripts/verify_hosted_space.sh
 
-# Fast static hygiene (schemas, adapter policy, workflow YAML — no browser)
-./scripts/workflow_hygiene.sh
+# Pre-ship (static hygiene + agent gate; see docs/workflow-hygiene.md)
+./scripts/pre_ship.sh
 
-# Recommended agent gate (parity + health/HTML + browser + JSON summary; needs agent-browser)
-./scripts/agent_gate.sh
+# Or run separately:
+./scripts/workflow_hygiene.sh   # static only
+./scripts/agent_gate.sh         # parity + health/HTML + browser + JSON
 
 # Parse gate JSON (progress is on stderr)
 ./scripts/agent_gate.sh 2>/dev/null | jq .
