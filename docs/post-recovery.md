@@ -25,5 +25,5 @@ Per README, the repo is prioritizing **workflow and deployment hygiene** (manife
 
 ## CI and remotes
 
-- **Manual generate smoke:** GitHub Actions → Python CI → Run workflow → `space-generate-smoke`.
+- **Manual generate smoke:** GitHub Actions → Python CI → Run workflow → `space-generate-smoke`. The job writes `pixal3d-generation-smoke/1` JSON and uploads the `generation-smoke-manifest` artifact (present when the manifest file was written, including failed generates).
 - **HF sync:** `git push origin main` when `check_repo_parity.py` reports drift and `HF_TOKEN` is not configured in Actions.

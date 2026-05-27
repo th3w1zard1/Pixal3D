@@ -79,7 +79,14 @@ jobs:
       - name: Install smoke dependencies
         run: python -m pip install -r scripts/smoke-requirements.txt
       - name: Live Space generate smoke (ZeroGPU quota)
-        run: python scripts/space_smoke.py --generate
+        run: python scripts/space_smoke.py --generate --write-manifest generation-smoke-manifest.json
+      - name: Upload generation smoke manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generation-smoke-manifest
+          path: generation-smoke-manifest.json
+          if-no-files-found: ignore
 
   repo-parity:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
