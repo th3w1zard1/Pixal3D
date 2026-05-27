@@ -7,6 +7,7 @@ Space recovery for the hosted ZeroGPU demo is **closed**. Use this page after me
 | Doc | Purpose |
 |-----|---------|
 | [SPACE_RECOVERY.md](SPACE_RECOVERY.md) | Verification matrix, operator commands, browser checklist |
+| [gate-results/README.md](gate-results/README.md) | Agent gate JSON schema, `example.json`, optional `latest.json` |
 | [README.md](../README.md) | ImageEZGen3D direction and runtime notes |
 | `docs/plans/2026-05-24-027-*` … `040-*` | Recovery implementation plans (archived on `main`) |
 

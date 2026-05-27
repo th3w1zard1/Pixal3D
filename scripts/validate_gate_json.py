@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
             print(err, file=sys.stderr)
         return 1
 
-    print(f"OK: {args.path} ({SCHEMA_VERSION})")
+    print(f"OK: {args.path} ({SCHEMA_VERSION})", file=sys.stderr)
     return 0
 
 
