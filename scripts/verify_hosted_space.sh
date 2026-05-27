@@ -58,6 +58,7 @@ overall_ok = parity_ok and health_ok and (
 print(
     json.dumps(
         {
+            "schema_version": "pixal3d-agent-gate/1",
             "url": os.environ.get("VERIFY_SPACE_URL", ""),
             "parity_ok": parity_ok,
             "health_ok": health_ok,

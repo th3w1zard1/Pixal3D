@@ -87,6 +87,9 @@ For local or agent verification of the hosted Space:
 # Recommended agent gate (parity + health/HTML + browser + JSON summary; needs agent-browser)
 ./scripts/agent_gate.sh
 
+# Parse gate JSON (progress is on stderr)
+./scripts/agent_gate.sh 2>/dev/null | jq .
+
 # Equivalent explicit flags
 ./scripts/verify_hosted_space.sh --browser --summary-json
 ```
