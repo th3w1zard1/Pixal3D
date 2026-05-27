@@ -1,4 +1,17 @@
 {
   "schema_version": "pixal3d-adapter-policy/1",
-  "adapters": []
+  "adapters": [
+    {
+      "id": "rembg-birefnet",
+      "hub_repo": "ZhengPeng7/BiRefNet",
+      "license_spdx": "MIT",
+      "enabled": false
+    },
+    {
+      "id": "rembg-birefnet-lite",
+      "hub_repo": "ZhengPeng7/BiRefNet_lite",
+      "license_spdx": "MIT",
+      "enabled": false
+    }
+  ]
 }

@@ -6,7 +6,7 @@ Heavy adapters are gated behind explicit policy before runtime integration. Poli
 
 | File | Purpose |
 |------|---------|
-| `policy.example.json` | Committed empty policy (no enabled adapters) |
+| `policy.example.json` | Documents current rembg Hub models as `enabled: false` (not enforced at runtime yet) |
 | `policy.local.json` | Optional local overrides (gitignored) |
 
 ## Commands
