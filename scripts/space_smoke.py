@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -91,16 +93,61 @@ def zerogpu_health_ok(health: dict[str, Any] | None) -> tuple[bool, str | None]:
     return True, None
 
 
+def _remote_short_head(remote: str, branch: str = "main") -> str | None:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", f"{remote}/{branch}"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def _expected_deploy_git_head() -> str | None:
+    for ref in ("origin/main", "github/main", "HEAD"):
+        if "/" in ref:
+            remote, branch = ref.split("/", 1)
+            head = _remote_short_head(remote, branch)
+        else:
+            head = _git_short_head()
+        if head:
+            return head
+    return None
+
+
 def repo_git_head_ok(health: dict[str, Any] | None) -> tuple[bool, str | None]:
     if not isinstance(health, dict) or "repo_git_head" not in health:
         return True, None
     remote_head = health.get("repo_git_head")
-    local_head = _git_short_head()
+    expected_head = _expected_deploy_git_head()
     if not isinstance(remote_head, str) or not remote_head:
         return False, "repo_git_head missing on /health"
-    if local_head and remote_head != local_head:
-        return False, f"repo_git_head mismatch: space={remote_head!r} local={local_head!r}"
+    if expected_head and remote_head != expected_head:
+        return False, (
+            f"repo_git_head mismatch: space={remote_head!r} expected={expected_head!r}"
+        )
     return True, None
+
+
+def wait_for_repo_git_head_health(
+    url: str,
+    timeout: float,
+    max_wait_secs: float,
+    poll_interval_secs: float = 15.0,
+) -> dict[str, Any]:
+    """Poll /health until repo_git_head matches deployed refs or max_wait_secs elapses."""
+    deadline = time.monotonic() + max(0.0, max_wait_secs)
+    last = check_health(url, timeout)
+    while True:
+        gh_ok, _ = repo_git_head_ok(last.get("health"))
+        if gh_ok:
+            return last
+        if time.monotonic() >= deadline:
+            return last
+        time.sleep(min(poll_interval_secs, max(0.0, deadline - time.monotonic())))
+        last = check_health(url, timeout)
+    return last
 
 
 def adapter_policy_health_ok(health: dict[str, Any] | None) -> tuple[bool, str | None]:
@@ -392,6 +439,13 @@ geometry-only GLB on ZeroGPU; sign in on the Space for preview frames and textur
         metavar="PATH",
         help="Write pixal3d-generation-smoke/1 JSON after --generate (requires --generate)",
     )
+    parser.add_argument(
+        "--repo-head-wait-secs",
+        type=float,
+        default=None,
+        metavar="SECS",
+        help="Poll /health for deploy head match (default: PIXAL3D_REPO_HEAD_WAIT_SECS or 120)",
+    )
     return parser
 
 
@@ -402,8 +456,19 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--write-manifest requires --generate")
     summary: dict[str, Any] = {"url": args.url.rstrip("/") + "/"}
 
-    health = check_health(args.url, args.timeout)
+    repo_head_wait = args.repo_head_wait_secs
+    if repo_head_wait is None:
+        raw_wait = os.environ.get("PIXAL3D_REPO_HEAD_WAIT_SECS", "120")
+        try:
+            repo_head_wait = float(raw_wait)
+        except ValueError:
+            repo_head_wait = 120.0
+    if repo_head_wait > 0:
+        health = wait_for_repo_git_head_health(args.url, args.timeout, repo_head_wait)
+    else:
+        health = check_health(args.url, args.timeout)
     summary["health_check"] = health
+    summary["repo_git_head_expected"] = _expected_deploy_git_head()
     health_ok = health["health_status"] == 200 and health["health"] is not None
     if not health_ok:
         print(json.dumps(summary, indent=2))

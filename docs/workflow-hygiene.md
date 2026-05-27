@@ -54,3 +54,7 @@ Persist agent gate JSON:
 ## Browser notes
 
 Agent gate browser exit **1** with explicit ZeroGPU quota copy is a verified pass when `overall_ok` is true. Do not run CLI `--generate` in the same session before the browser gate.
+
+## Deploy head lag
+
+After pushing to the HF Space remote, `/health` `repo_git_head` may trail `origin/main` until the Space rebuild finishes. `space_smoke.py` polls for up to **120s** by default (`PIXAL3D_REPO_HEAD_WAIT_SECS`). Gate JSON `repo_git_head_match` compares the live Space head to `origin/main` (then `github/main`), not only local `HEAD`.
