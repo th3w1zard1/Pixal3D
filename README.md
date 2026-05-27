@@ -78,13 +78,19 @@ It intentionally does not validate:
 - heavyweight model downloads
 - end-to-end inference or GPU kernels on GitHub-hosted runners
 
-For local or agent verification of the hosted Space without a browser:
+For local or agent verification of the hosted Space:
 
 ```bash
+# Parity + health/HTML only (no agent-browser)
 ./scripts/verify_hosted_space.sh
+
+# Combined gate: parity + health/HTML + browser default-sample E2E (needs agent-browser)
+./scripts/verify_hosted_space.sh --browser
 ```
 
-Equivalent manual steps:
+Browser smoke exit **0** means GLB ready; exit **1** with explicit ZeroGPU quota copy is a verified pass (path exercised). Do not combine `--browser` with `--generate` in one invocation.
+
+Equivalent manual health/HTML steps:
 
 ```bash
 python scripts/space_smoke.py --health-only --html-check
