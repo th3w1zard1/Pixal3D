@@ -4,9 +4,9 @@ See also [post-recovery.md](post-recovery.md) and [workflow-hygiene.md](workflow
 
 ## Status: closed
 
-The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `039-*`). Workflow hygiene bundle (plans `067`–`071`, merge `881c031`) adds static gates, generation smoke manifests, adapter policy stub, and `pre_ship.sh`.
+The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `039-*`). Workflow hygiene bundle (plans `067`–`071`, merge `881c031`) adds static gates, generation smoke manifests, adapter policy stub, and `pre_ship.sh`. Plan **074** (`25685d4`) exposes `adapter_policy_*` on `/health`; example policy lists active rembg adapters (plan **075**).
 
-**Last pre-ship (2026-05-27, `881c031`):** `./scripts/pre_ship.sh` — `overall_ok: true`, `browser_exit: 1` (quota copy, verified pass). **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`).
+**Last pre-ship (2026-05-27, `25685d4`):** `./scripts/pre_ship.sh` — `overall_ok: true`, `browser_exit: 1` (quota copy, verified pass). **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`).
 
 | Surface | Verification |
 |---------|----------------|
@@ -15,6 +15,7 @@ The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational 
 | GitHub ↔ HF parity | **Pass** — `check_repo_parity.py` on `main` (sync after each push) |
 | Browser gallery → GLB | **Pass** (2026-05-24, plans 051/054) — via `agent_gate.sh` / `pre_ship.sh`; exit **0** = GLB; **1** = explicit quota/error (verified); **2** timeout |
 | Workflow hygiene (static) | **Pass** — `./scripts/workflow_hygiene.sh` (schemas, adapter policy, workflow YAML in CI) |
+| Adapter policy (`/health`) | **Pass** — `adapter_policy_ok: true`, `adapter_policy_enabled_count` matches `policy.example.json` |
 
 ## Verification order (agents)
 
@@ -64,6 +65,8 @@ Gallery sample `0_img.png` at 512 with idle error hidden. When anonymous quota i
 | 069 | Adapter policy stub |
 | 070 | `workflow_hygiene.sh` |
 | 071 | `pre_ship.sh` + `workflow-hygiene.md` |
+| 074 | Adapter policy on `/health` |
+| 075 | Active rembg entries in `policy.example.json` |
 
 ## Remotes
 
