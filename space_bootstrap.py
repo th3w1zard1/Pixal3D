@@ -210,7 +210,7 @@ def build_runtime_config(env: dict[str, str] | None = None) -> RuntimeConfig:
     warmup_default = not bool(env.get("SPACE_ID"))
     warmup_override = env.get("PIXAL3D_WARMUP_ON_START")
 
-    return RuntimeConfig(
+    config = RuntimeConfig(
         hf_token=env.get("HF_TOKEN") or None,
         hf_cache_dir=env.get("PIXAL3D_HF_CACHE_DIR") or None,
         pipeline_revision=env.get("PIXAL3D_PIPELINE_REVISION") or None,
@@ -221,6 +221,11 @@ def build_runtime_config(env: dict[str, str] | None = None) -> RuntimeConfig:
         ),
         warmup_on_start=_as_bool(warmup_override, warmup_default),
     )
+
+    from adapter_policy_runtime import evaluate_rembg_models
+
+    evaluate_rembg_models(env, candidate_rembg_models(config))
+    return config
 
 
 def build_hf_hub_kwargs(

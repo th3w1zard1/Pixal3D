@@ -91,6 +91,14 @@ def zerogpu_health_ok(health: dict[str, Any] | None) -> tuple[bool, str | None]:
     return True, None
 
 
+def adapter_policy_health_ok(health: dict[str, Any] | None) -> tuple[bool, str | None]:
+    if not isinstance(health, dict) or "adapter_policy_ok" not in health:
+        return True, None
+    if health.get("adapter_policy_ok") is True:
+        return True, None
+    return False, f"adapter_policy_ok false ({health.get('adapter_policy_violations')!r})"
+
+
 def check_html(base_url: str, timeout: float) -> dict[str, Any]:
     status, html, err = _fetch_text(base_url.rstrip("/") + "/", timeout)
     if err or not html:
@@ -374,6 +382,14 @@ def main(argv: list[str] | None = None) -> int:
     if z_err:
         summary["zerogpu_health_error"] = z_err
     if not z_ok:
+        print(json.dumps(summary, indent=2))
+        return 1
+
+    ap_ok, ap_err = adapter_policy_health_ok(health.get("health"))
+    summary["adapter_policy_health_ok"] = ap_ok
+    if ap_err:
+        summary["adapter_policy_health_error"] = ap_err
+    if not ap_ok:
         print(json.dumps(summary, indent=2))
         return 1
 

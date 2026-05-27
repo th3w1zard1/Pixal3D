@@ -1478,6 +1478,10 @@ def runtime_payload() -> dict[str, object]:
             target_hardware,
             bool(runtime_config.hf_token and payload["space_id"]),
         )
+
+    from adapter_policy_runtime import policy_status_snapshot
+
+    payload.update(policy_status_snapshot())
     return payload
 
 
