@@ -9,6 +9,7 @@ cd "$ROOT"
 RUN_GENERATE=0
 RUN_BROWSER=0
 SUMMARY_JSON=0
+SUMMARY_WRITE_PATH=""
 SPACE_URL="${PIXAL3D_SPACE_URL:-https://th3w1zard1-pixal3d.hf.space/}"
 VERIFY_BROWSER_EXIT=""
 VERIFY_PARITY_OK=0
@@ -24,12 +25,13 @@ log() {
 
 usage() {
   cat <<'EOF'
-Usage: scripts/verify_hosted_space.sh [--browser] [--generate] [--summary-json] [--url URL]
+Usage: scripts/verify_hosted_space.sh [--browser] [--generate] [--summary-json] [--write-summary PATH] [--url URL]
 
   Default: parity check + live health/HTML smoke.
   --browser: run ./scripts/browser_glb_smoke.sh after health/HTML (needs agent-browser).
   --generate: also run space_smoke.py --generate (needs venv + gradio_client; uses ZeroGPU quota).
   --summary-json: write only the JSON summary to stdout (progress and browser output go to stderr).
+  --write-summary PATH: also write the JSON summary to PATH (requires --summary-json). Exit 0 iff overall_ok.
 
   Do not combine --browser and --generate. Run browser before --generate in the same session.
   Canonical agent entrypoint: ./scripts/agent_gate.sh
@@ -43,7 +45,9 @@ emit_summary_json() {
   export VERIFY_BROWSER_EXIT
   export VERIFY_PARITY_OK
   export VERIFY_HEALTH_OK
-  python3 <<'PY'
+  local summary_tmp
+  summary_tmp="$(mktemp "${TMPDIR:-/tmp}/verify-gate-summary.XXXXXX")"
+  python3 <<'PY' >"$summary_tmp"
 import json
 import os
 
@@ -70,6 +74,15 @@ print(
     )
 )
 PY
+  cat "$summary_tmp"
+  if [[ -n "$SUMMARY_WRITE_PATH" ]]; then
+    mkdir -p "$(dirname "$SUMMARY_WRITE_PATH")"
+    cp "$summary_tmp" "$SUMMARY_WRITE_PATH"
+  fi
+  python3 -c "import json,sys; d=json.load(open('$summary_tmp')); sys.exit(0 if d.get('overall_ok') else 1)"
+  local gate_exit=$?
+  rm -f "$summary_tmp"
+  return "$gate_exit"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -77,6 +90,10 @@ while [[ $# -gt 0 ]]; do
     --browser) RUN_BROWSER=1; shift ;;
     --generate) RUN_GENERATE=1; shift ;;
     --summary-json) SUMMARY_JSON=1; shift ;;
+    --write-summary)
+      SUMMARY_WRITE_PATH="${2:?missing path}"
+      shift 2
+      ;;
     --url)
       SPACE_URL="${2:?missing URL}"
       shift 2
@@ -89,6 +106,11 @@ done
 if [[ "$RUN_BROWSER" -eq 1 && "$RUN_GENERATE" -eq 1 ]]; then
   echo "verify_hosted_space: --browser and --generate cannot be used together" >&2
   usage >&2
+  exit 2
+fi
+
+if [[ -n "$SUMMARY_WRITE_PATH" && "$SUMMARY_JSON" -eq 0 ]]; then
+  echo "verify_hosted_space: --write-summary requires --summary-json" >&2
   exit 2
 fi
 
@@ -125,8 +147,8 @@ if [[ "$RUN_BROWSER" -eq 1 ]]; then
     log "OK: browser smoke complete (explicit quota/error — path verified)"
   else
     echo "verify_hosted_space: browser smoke failed (exit ${VERIFY_BROWSER_EXIT})" >&2
-    emit_summary_json
-    exit "$VERIFY_BROWSER_EXIT"
+    emit_summary_json || exit 1
+    exit 1
   fi
 fi
 
@@ -151,5 +173,5 @@ if [[ "$RUN_BROWSER" -eq 0 ]]; then
   log "  Or: ./scripts/agent_gate.sh  /  verify_hosted_space.sh --browser [--url URL]"
 fi
 
-emit_summary_json
+emit_summary_json || exit 1
 log "OK: hosted verification complete"
