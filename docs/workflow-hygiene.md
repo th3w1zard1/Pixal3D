@@ -1,6 +1,6 @@
 # Workflow hygiene index
 
-Post-recovery shipping checks for ImageEZGen3D / Pixal3D hosted Space work. No model weights or `app.py` changes required for these gates.
+Post-recovery shipping checks for ImageEZGen3D / Pixal3D hosted Space work. No model weights or `app.py` changes required for these gates. Recovery context: [SPACE_RECOVERY.md](SPACE_RECOVERY.md).
 
 ## Recommended order
 
