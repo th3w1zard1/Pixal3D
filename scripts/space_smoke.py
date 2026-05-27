@@ -91,6 +91,18 @@ def zerogpu_health_ok(health: dict[str, Any] | None) -> tuple[bool, str | None]:
     return True, None
 
 
+def repo_git_head_ok(health: dict[str, Any] | None) -> tuple[bool, str | None]:
+    if not isinstance(health, dict) or "repo_git_head" not in health:
+        return True, None
+    remote_head = health.get("repo_git_head")
+    local_head = _git_short_head()
+    if not isinstance(remote_head, str) or not remote_head:
+        return False, "repo_git_head missing on /health"
+    if local_head and remote_head != local_head:
+        return False, f"repo_git_head mismatch: space={remote_head!r} local={local_head!r}"
+    return True, None
+
+
 def adapter_policy_health_ok(health: dict[str, Any] | None) -> tuple[bool, str | None]:
     if not isinstance(health, dict) or "adapter_policy_ok" not in health:
         return True, None
@@ -410,6 +422,14 @@ def main(argv: list[str] | None = None) -> int:
     if ap_err:
         summary["adapter_policy_health_error"] = ap_err
     if not ap_ok:
+        print(json.dumps(summary, indent=2))
+        return 1
+
+    gh_ok, gh_err = repo_git_head_ok(health.get("health"))
+    summary["repo_git_head_ok"] = gh_ok
+    if gh_err:
+        summary["repo_git_head_error"] = gh_err
+    if not gh_ok:
         print(json.dumps(summary, indent=2))
         return 1
 

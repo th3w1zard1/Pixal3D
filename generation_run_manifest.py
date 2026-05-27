@@ -10,7 +10,7 @@ from typing import Any
 GENERATION_RUN_SCHEMA = "pixal3d-generation-run/1"
 
 
-def _git_short_head() -> str | None:
+def git_short_head() -> str | None:
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -38,7 +38,7 @@ def build_generation_run_manifest(
         "schema_version": GENERATION_RUN_SCHEMA,
         "run_id": str(uuid.uuid4()),
         "finished_at": finished_at,
-        "git_head": _git_short_head(),
+        "git_head": git_short_head(),
         "session_id": session_id,
         "glb_path": glb_path if isinstance(glb_path, str) else None,
         "extract_available": result.get("extract_available")
