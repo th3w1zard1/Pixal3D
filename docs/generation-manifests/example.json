@@ -1,0 +1,11 @@
+{
+  "schema_version": "pixal3d-generation-smoke/1",
+  "checked_at": "2026-05-24T12:00:00Z",
+  "git_head": "9ead388",
+  "url": "https://th3w1zard1-pixal3d.hf.space/",
+  "generate_ok": true,
+  "glb_path": "/tmp/pixal3d-smoke/example.glb",
+  "extract_available": false,
+  "warmup_skipped": true,
+  "generate_error": null
+}

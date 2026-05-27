@@ -70,7 +70,7 @@ It currently validates:
 - syntax compilation for the core app and runtime files
 - live hosted Space smoke via `scripts/space_smoke.py --health-only --html-check` (`space-live-smoke` job)
 - on pushes to `main`, a non-blocking `repo-parity` job compares GitHub `main` to the public Hugging Face Space git ref and logs drift when `HF_TOKEN` sync was skipped
-- optional manual full generate smoke via **Actions → Python CI → Run workflow** (`space-generate-smoke` job; consumes ZeroGPU quota, ~2–3 minutes)
+- optional manual full generate smoke via **Actions → Python CI → Run workflow** (`space-generate-smoke` job; consumes ZeroGPU quota, ~2–3 minutes; uploads `generation-smoke-manifest` artifact when the run writes a manifest)
 
 It intentionally does not validate:
 
@@ -84,8 +84,12 @@ For local or agent verification of the hosted Space:
 # Parity + health/HTML only (no agent-browser)
 ./scripts/verify_hosted_space.sh
 
-# Recommended agent gate (parity + health/HTML + browser + JSON summary; needs agent-browser)
-./scripts/agent_gate.sh
+# Pre-ship (static hygiene + agent gate; see docs/workflow-hygiene.md)
+./scripts/pre_ship.sh
+
+# Or run separately:
+./scripts/workflow_hygiene.sh   # static only
+./scripts/agent_gate.sh         # parity + health/HTML + browser + JSON
 
 # Parse gate JSON (progress is on stderr)
 ./scripts/agent_gate.sh 2>/dev/null | jq .
@@ -111,7 +115,12 @@ Use `--generate` only when ZeroGPU quota allows (see `AGENTS.md`). That path nee
 python3 -m venv .venv
 .venv/bin/pip install -r scripts/smoke-requirements.txt
 .venv/bin/python scripts/space_smoke.py --generate
+
+# Persist schema-stable manifest (pixal3d-generation-smoke/1; gitignored latest.json)
+.venv/bin/python scripts/space_smoke.py --generate --write-manifest docs/generation-manifests/latest.json
 ```
+
+See `docs/generation-manifests/README.md` for field shape and validation.
 
 On hosted ZeroGPU, `--generate` skips `/warmup_runtime` and calls `/generate_3d` directly (same as the browser UI). The first cold generate requests a 120s ZeroGPU slice while the pipeline is unloaded; warm runs stay on the 60s cap. Expect a geometry-only GLB (`glb_path`) in ~2–3 minutes for anonymous cold runs. Check `/health` for `rembg_model`, `low_vram`, `hub_prefetch_state`, `cuda_mesh_operators`, and `zerogpu_gpu_budgets.cold_generation_max_seconds`.
 

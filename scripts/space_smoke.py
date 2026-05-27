@@ -4,12 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
+import subprocess
 import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+GENERATION_MANIFEST_SCHEMA = "pixal3d-generation-smoke/1"
 
 DEFAULT_SPACE_URL = "https://th3w1zard1-pixal3d.hf.space/"
 DEFAULT_SAMPLE = Path(__file__).resolve().parents[1] / "assets" / "images" / "0_img.png"
@@ -225,6 +229,67 @@ def should_skip_warmup(health: dict[str, Any] | None) -> bool:
     return bool(health and health.get("runtime_mode") == "zerogpu")
 
 
+def _git_short_head() -> str | None:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def build_generation_manifest(url: str, generate_check: dict[str, Any]) -> dict[str, Any]:
+    result = generate_check.get("generate_result")
+    glb_path: str | None = None
+    extract_available: bool | None = None
+    if isinstance(result, dict):
+        raw_glb = result.get("glb_path")
+        if isinstance(raw_glb, str):
+            glb_path = raw_glb
+        raw_extract = result.get("extract_available")
+        if isinstance(raw_extract, bool):
+            extract_available = raw_extract
+
+    generate_error = generate_check.get("generate_error")
+    if not isinstance(generate_error, str):
+        generate_error = None
+
+    warmup_skipped = generate_check.get("warmup_skipped")
+    if warmup_skipped is not None and not isinstance(warmup_skipped, bool):
+        warmup_skipped = None
+
+    checked_at = (
+        datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    return {
+        "schema_version": GENERATION_MANIFEST_SCHEMA,
+        "checked_at": checked_at,
+        "git_head": _git_short_head(),
+        "url": url.rstrip("/") + "/",
+        "generate_ok": bool(generate_check.get("generate_ok")),
+        "glb_path": glb_path,
+        "extract_available": extract_available,
+        "warmup_skipped": warmup_skipped,
+        "generate_error": generate_error,
+    }
+
+
+def write_generation_manifest(path: Path, manifest: dict[str, Any]) -> None:
+    path = path.expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
+def validate_generation_manifest_file(path: Path) -> int:
+    validator = Path(__file__).resolve().parent / "validate_generation_manifest.py"
+    return subprocess.call([sys.executable, str(validator), str(path)])
+
+
 def run_warmup_and_generate(base_url: str, sample: Path, session_id: str) -> dict[str, Any]:
     try:
         from gradio_client import Client
@@ -255,6 +320,7 @@ def build_parser() -> argparse.ArgumentParser:
 Examples:
   python scripts/space_smoke.py --health-only --html-check
   python scripts/space_smoke.py --url https://th3w1zard1-pixal3d.hf.space/ --generate
+  python scripts/space_smoke.py --generate --write-manifest docs/generation-manifests/latest.json
 
 `--generate` uses ZeroGPU-safe defaults (512 resolution, 5 stage steps). On hosted
 ZeroGPU it skips `/warmup_runtime` and calls `/generate_3d` directly, matching the
@@ -280,11 +346,20 @@ geometry-only GLB on ZeroGPU; sign in on the Space for preview frames and textur
         default=600.0,
         help="Unused when using blocking predict; kept for future queue polling",
     )
+    parser.add_argument(
+        "--write-manifest",
+        type=Path,
+        metavar="PATH",
+        help="Write pixal3d-generation-smoke/1 JSON after --generate (requires --generate)",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.write_manifest is not None and not args.generate:
+        parser.error("--write-manifest requires --generate")
     summary: dict[str, Any] = {"url": args.url.rstrip("/") + "/"}
 
     health = check_health(args.url, args.timeout)
@@ -312,6 +387,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.generate and not args.health_only:
         generate = run_warmup_and_generate(args.url, args.sample, SMOKE_SESSION_ID)
         summary["generate_check"] = generate
+        if args.write_manifest is not None:
+            manifest = build_generation_manifest(summary["url"], generate)
+            write_generation_manifest(args.write_manifest, manifest)
+            manifest_rc = validate_generation_manifest_file(args.write_manifest.expanduser().resolve())
+            if manifest_rc != 0:
+                return manifest_rc
         print(json.dumps(summary, indent=2, default=str))
         return 0 if generate.get("generate_ok") else 2
 
