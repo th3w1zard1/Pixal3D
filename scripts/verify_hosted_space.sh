@@ -70,6 +70,11 @@ emit_summary_json() {
   local summary_tmp
   summary_tmp="$(mktemp "${TMPDIR:-/tmp}/verify-gate-summary.XXXXXX")"
   export VERIFY_GIT_HEAD="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+  export VERIFY_DEPLOY_GIT_HEAD="$(
+    git -C "$ROOT" rev-parse --short origin/main 2>/dev/null \
+      || git -C "$ROOT" rev-parse --short github/main 2>/dev/null \
+      || echo "$VERIFY_GIT_HEAD"
+  )"
   export VERIFY_SPACE_REPO_GIT_HEAD
   export VERIFY_ADAPTER_POLICY_OK
   export VERIFY_ADAPTER_POLICY_ENABLED_COUNT
@@ -84,12 +89,13 @@ browser_exit = int(raw_exit) if raw_exit != "" else None
 parity_ok = os.environ.get("VERIFY_PARITY_OK") == "1"
 health_ok = os.environ.get("VERIFY_HEALTH_OK") == "1"
 local_head = os.environ.get("VERIFY_GIT_HEAD") or None
+deploy_head = os.environ.get("VERIFY_DEPLOY_GIT_HEAD") or local_head
 space_repo_git_head = os.environ.get("VERIFY_SPACE_REPO_GIT_HEAD") or None
 if space_repo_git_head == "":
     space_repo_git_head = None
 repo_git_head_match = None
-if space_repo_git_head and local_head:
-    repo_git_head_match = space_repo_git_head == local_head
+if space_repo_git_head and deploy_head:
+    repo_git_head_match = space_repo_git_head == deploy_head
 raw_adapter_ok = os.environ.get("VERIFY_ADAPTER_POLICY_OK", "")
 if raw_adapter_ok == "true":
     adapter_policy_ok = True

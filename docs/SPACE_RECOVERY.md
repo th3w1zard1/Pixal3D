@@ -4,9 +4,9 @@ See also [post-recovery.md](post-recovery.md) and [workflow-hygiene.md](workflow
 
 ## Status: closed
 
-The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `039-*`). Workflow hygiene (plans `067`–`071`, `881c031`), adapter policy runtime (**074**–**075**), and API `generation_run` manifests (**076**, `4e5f5dc`) are on `main`.
+The hosted ZeroGPU Space at https://th3w1zard1-pixal3d.hf.space/ is operational for anonymous cold generate with a geometry-only GLB (`glb_path`) and textured extract via Export (`extract_available: true`). Recovery implementation is complete (plans `docs/plans/2026-05-24-027-*` through `039-*`). Workflow hygiene (plans `067`–`071`), adapter policy runtime (**074**–**075**), API `generation_run` manifests (**076**), `repo_git_head` on `/health` (**077**), and agent gate schema v3 (**078**) are on `main`.
 
-**Last pre-ship (2026-05-27, `4e5f5dc`):** `./scripts/pre_ship.sh` — `overall_ok: true`, `browser_exit: 1` (quota copy, verified pass). **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`). After **076** deploy, confirm `generation_run` via `space_smoke.py --generate` on a fresh quota window.
+**Last pre-ship (2026-05-27, `95c4052`+):** `./scripts/pre_ship.sh` — expect `overall_ok: true`, `repo_git_head_match: true`, `browser_exit: 1` when quota copy is shown (verified pass). Health smoke polls up to `PIXAL3D_REPO_HEAD_WAIT_SECS` (default 120) after HF pushes while the Space container catches up. **Last CLI generate (2026-05-24):** `--generate` pass (~124s, `glb_path`, `extract_available: true`). Confirm `generation_run` via `space_smoke.py --generate` on a fresh quota window.
 
 | Surface | Verification |
 |---------|----------------|
@@ -66,6 +66,8 @@ Gallery sample `0_img.png` at 512. Anonymous quota exhaustion shows full **ZeroG
 | 075 | Active rembg entries in `policy.example.json` |
 | 076 | `generation_run` on `/generate_3d` |
 | 077 | `repo_git_head` on `/health` + recovery doc sync |
+| 078 | Agent gate `pixal3d-agent-gate/3` (deploy health fields) |
+| 079 | Deploy-head poll + match `origin/main` (rebuild lag) |
 
 ## Remotes
 
