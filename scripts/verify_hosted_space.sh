@@ -8,24 +8,61 @@ cd "$ROOT"
 
 RUN_GENERATE=0
 RUN_BROWSER=0
+SUMMARY_JSON=0
 SPACE_URL="${PIXAL3D_SPACE_URL:-https://th3w1zard1-pixal3d.hf.space/}"
+VERIFY_BROWSER_EXIT=""
 
 usage() {
   cat <<'EOF'
-Usage: scripts/verify_hosted_space.sh [--browser] [--generate] [--url URL]
+Usage: scripts/verify_hosted_space.sh [--browser] [--generate] [--summary-json] [--url URL]
 
   Default: parity check + live health/HTML smoke.
   --browser: run ./scripts/browser_glb_smoke.sh after health/HTML (needs agent-browser).
   --generate: also run space_smoke.py --generate (needs venv + gradio_client; uses ZeroGPU quota).
+  --summary-json: print one JSON summary object to stdout before the final OK line.
 
   Do not combine --browser and --generate. Run browser before --generate in the same session.
 EOF
+}
+
+emit_summary_json() {
+  [[ "$SUMMARY_JSON" -eq 1 ]] || return 0
+  export VERIFY_SPACE_URL="$SPACE_URL"
+  export VERIFY_BROWSER_RAN="$RUN_BROWSER"
+  export VERIFY_BROWSER_EXIT
+  python3 <<'PY'
+import json
+import os
+
+browser_ran = os.environ.get("VERIFY_BROWSER_RAN") == "1"
+raw_exit = os.environ.get("VERIFY_BROWSER_EXIT", "")
+browser_exit = int(raw_exit) if raw_exit != "" else None
+parity_ok = True
+health_ok = True
+overall_ok = parity_ok and health_ok and (
+    not browser_ran or browser_exit in (0, 1)
+)
+print(
+    json.dumps(
+        {
+            "url": os.environ.get("VERIFY_SPACE_URL", ""),
+            "parity_ok": parity_ok,
+            "health_ok": health_ok,
+            "browser_ran": browser_ran,
+            "browser_exit": browser_exit,
+            "overall_ok": overall_ok,
+        },
+        indent=2,
+    )
+)
+PY
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --browser) RUN_BROWSER=1; shift ;;
     --generate) RUN_GENERATE=1; shift ;;
+    --summary-json) SUMMARY_JSON=1; shift ;;
     --url)
       SPACE_URL="${2:?missing URL}"
       shift 2
@@ -52,15 +89,16 @@ if [[ "$RUN_BROWSER" -eq 1 ]]; then
   browser_args=(--url "$SPACE_URL")
   set +e
   "${ROOT}/scripts/browser_glb_smoke.sh" "${browser_args[@]}"
-  browser_exit=$?
+  VERIFY_BROWSER_EXIT=$?
   set -e
-  if [[ "$browser_exit" -eq 0 ]]; then
+  if [[ "$VERIFY_BROWSER_EXIT" -eq 0 ]]; then
     echo "OK: browser smoke complete (GLB)"
-  elif [[ "$browser_exit" -eq 1 ]]; then
+  elif [[ "$VERIFY_BROWSER_EXIT" -eq 1 ]]; then
     echo "OK: browser smoke complete (explicit quota/error — path verified)"
   else
-    echo "verify_hosted_space: browser smoke failed (exit ${browser_exit})" >&2
-    exit "$browser_exit"
+    echo "verify_hosted_space: browser smoke failed (exit ${VERIFY_BROWSER_EXIT})" >&2
+    emit_summary_json
+    exit "$VERIFY_BROWSER_EXIT"
   fi
 fi
 
@@ -84,4 +122,5 @@ Browser E2E (run before --generate in the same session):
 EOF
 fi
 
+emit_summary_json
 echo "OK: hosted verification complete"

@@ -86,6 +86,9 @@ For local or agent verification of the hosted Space:
 
 # Combined gate: parity + health/HTML + browser default-sample E2E (needs agent-browser)
 ./scripts/verify_hosted_space.sh --browser
+
+# Same gate with machine-readable JSON summary (for agents/CI wrappers)
+./scripts/verify_hosted_space.sh --browser --summary-json
 ```
 
 Browser smoke exit **0** means GLB ready; exit **1** with explicit ZeroGPU quota copy is a verified pass (path exercised). Do not combine `--browser` with `--generate` in one invocation.
