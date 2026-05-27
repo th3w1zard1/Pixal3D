@@ -23,3 +23,6 @@ autotune_cache.json
 .history/
 
 .env
+
+docs/gate-results/latest.json
+docs/generation-manifests/latest.json

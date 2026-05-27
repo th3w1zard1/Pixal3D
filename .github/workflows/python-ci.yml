@@ -52,8 +52,11 @@ jobs:
           scripts/space_smoke.py
           scripts/check_repo_parity.py
           scripts/validate_gate_json.py
+          scripts/validate_generation_manifest.py
       - name: Validate agent gate example JSON
         run: python scripts/validate_gate_json.py docs/gate-results/example.json
+      - name: Validate generation manifest example JSON
+        run: python scripts/validate_generation_manifest.py docs/generation-manifests/example.json
 
   space-live-smoke:
     runs-on: ubuntu-latest
