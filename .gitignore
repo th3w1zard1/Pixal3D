@@ -26,3 +26,4 @@ autotune_cache.json
 
 docs/gate-results/latest.json
 docs/generation-manifests/latest.json
+docs/adapters/policy.local.json

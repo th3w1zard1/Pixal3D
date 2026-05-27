@@ -53,10 +53,16 @@ jobs:
           scripts/check_repo_parity.py
           scripts/validate_gate_json.py
           scripts/validate_generation_manifest.py
+          scripts/validate_adapter_policy.py
+          scripts/check_adapter_policy.py
       - name: Validate agent gate example JSON
         run: python scripts/validate_gate_json.py docs/gate-results/example.json
       - name: Validate generation manifest example JSON
         run: python scripts/validate_generation_manifest.py docs/generation-manifests/example.json
+      - name: Validate adapter policy example JSON
+        run: python scripts/validate_adapter_policy.py docs/adapters/policy.example.json
+      - name: Adapter policy check smoke
+        run: python scripts/check_adapter_policy.py
 
   space-live-smoke:
     runs-on: ubuntu-latest
