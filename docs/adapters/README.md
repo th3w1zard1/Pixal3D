@@ -6,7 +6,7 @@ Heavy adapters are gated behind explicit policy before runtime integration. Poli
 
 | File | Purpose |
 |------|---------|
-| `policy.example.json` | Documents current rembg Hub models as `enabled: false` (not enforced at runtime yet) |
+| `policy.example.json` | Documents active rembg Hub models (`enabled: true`; matches ZeroGPU defaults) |
 | `policy.local.json` | Optional local overrides (gitignored) |
 
 ## Commands
@@ -41,7 +41,7 @@ Environment:
 | `PIXAL3D_ADAPTER_POLICY` | Path to policy JSON (default: `docs/adapters/policy.example.json`) |
 | `PIXAL3D_ADAPTER_POLICY_ENFORCE=1` | Fail boot when enabled adapters exist and rembg models are not listed |
 
-With the committed example policy (all adapters `enabled: false`), enforcement is a no-op and `adapter_policy_ok` stays true.
+With the committed example policy, `/health` reports `adapter_policy_enabled_count: 2` and `adapter_policy_ok: true` when rembg models match the listed `hub_repo` values. Boot fails only when `PIXAL3D_ADAPTER_POLICY_ENFORCE=1` and a configured rembg model is not listed on an enabled adapter.
 
 ## Adapter entry shape
 

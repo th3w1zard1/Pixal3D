@@ -5,13 +5,13 @@
       "id": "rembg-birefnet",
       "hub_repo": "ZhengPeng7/BiRefNet",
       "license_spdx": "MIT",
-      "enabled": false
+      "enabled": true
     },
     {
       "id": "rembg-birefnet-lite",
       "hub_repo": "ZhengPeng7/BiRefNet_lite",
       "license_spdx": "MIT",
-      "enabled": false
+      "enabled": true
     }
   ]
 }
