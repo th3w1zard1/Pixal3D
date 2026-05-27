@@ -14,6 +14,14 @@ VERIFY_BROWSER_EXIT=""
 VERIFY_PARITY_OK=0
 VERIFY_HEALTH_OK=0
 
+log() {
+  if [[ "$SUMMARY_JSON" -eq 1 ]]; then
+    echo "$@" >&2
+  else
+    echo "$@"
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage: scripts/verify_hosted_space.sh [--browser] [--generate] [--summary-json] [--url URL]
@@ -21,9 +29,10 @@ Usage: scripts/verify_hosted_space.sh [--browser] [--generate] [--summary-json] 
   Default: parity check + live health/HTML smoke.
   --browser: run ./scripts/browser_glb_smoke.sh after health/HTML (needs agent-browser).
   --generate: also run space_smoke.py --generate (needs venv + gradio_client; uses ZeroGPU quota).
-  --summary-json: print one JSON summary object to stdout before the final OK line.
+  --summary-json: write only the JSON summary to stdout (progress and browser output go to stderr).
 
   Do not combine --browser and --generate. Run browser before --generate in the same session.
+  Canonical agent entrypoint: ./scripts/agent_gate.sh
 EOF
 }
 
@@ -82,25 +91,37 @@ if [[ "$RUN_BROWSER" -eq 1 && "$RUN_GENERATE" -eq 1 ]]; then
   exit 2
 fi
 
-echo "==> Repo parity (github vs HF Space)"
-python3 scripts/check_repo_parity.py
+log "==> Repo parity (github vs HF Space)"
+if [[ "$SUMMARY_JSON" -eq 1 ]]; then
+  python3 scripts/check_repo_parity.py >&2
+else
+  python3 scripts/check_repo_parity.py
+fi
 VERIFY_PARITY_OK=1
 
-echo "==> Live health + HTML smoke: ${SPACE_URL}"
-python3 scripts/space_smoke.py --url "$SPACE_URL" --health-only --html-check
+log "==> Live health + HTML smoke: ${SPACE_URL}"
+if [[ "$SUMMARY_JSON" -eq 1 ]]; then
+  python3 scripts/space_smoke.py --url "$SPACE_URL" --health-only --html-check >&2
+else
+  python3 scripts/space_smoke.py --url "$SPACE_URL" --health-only --html-check
+fi
 VERIFY_HEALTH_OK=1
 
 if [[ "$RUN_BROWSER" -eq 1 ]]; then
-  echo "==> Browser GLB smoke (run before --generate in the same session)"
+  log "==> Browser GLB smoke (run before --generate in the same session)"
   browser_args=(--url "$SPACE_URL")
   set +e
-  "${ROOT}/scripts/browser_glb_smoke.sh" "${browser_args[@]}"
+  if [[ "$SUMMARY_JSON" -eq 1 ]]; then
+    "${ROOT}/scripts/browser_glb_smoke.sh" "${browser_args[@]}" >&2
+  else
+    "${ROOT}/scripts/browser_glb_smoke.sh" "${browser_args[@]}"
+  fi
   VERIFY_BROWSER_EXIT=$?
   set -e
   if [[ "$VERIFY_BROWSER_EXIT" -eq 0 ]]; then
-    echo "OK: browser smoke complete (GLB)"
+    log "OK: browser smoke complete (GLB)"
   elif [[ "$VERIFY_BROWSER_EXIT" -eq 1 ]]; then
-    echo "OK: browser smoke complete (explicit quota/error — path verified)"
+    log "OK: browser smoke complete (explicit quota/error — path verified)"
   else
     echo "verify_hosted_space: browser smoke failed (exit ${VERIFY_BROWSER_EXIT})" >&2
     emit_summary_json
@@ -109,24 +130,25 @@ if [[ "$RUN_BROWSER" -eq 1 ]]; then
 fi
 
 if [[ "$RUN_GENERATE" -eq 1 ]]; then
-  echo "==> Live generate smoke (ZeroGPU quota; ~2-3 min)"
+  log "==> Live generate smoke (ZeroGPU quota; ~2-3 min)"
   VENV="${ROOT}/.venv"
   if [[ ! -x "${VENV}/bin/python" ]]; then
     python3 -m venv "$VENV"
     "${VENV}/bin/pip" install -q -r scripts/smoke-requirements.txt
   fi
-  "${VENV}/bin/python" scripts/space_smoke.py --url "$SPACE_URL" --generate
+  if [[ "$SUMMARY_JSON" -eq 1 ]]; then
+    "${VENV}/bin/python" scripts/space_smoke.py --url "$SPACE_URL" --generate >&2
+  else
+    "${VENV}/bin/python" scripts/space_smoke.py --url "$SPACE_URL" --generate
+  fi
 fi
 
 if [[ "$RUN_BROWSER" -eq 0 ]]; then
-  cat <<'EOF'
-
-Browser E2E (run before --generate in the same session):
-  ./scripts/browser_glb_smoke.sh [--url URL]
-  Or: ./scripts/verify_hosted_space.sh --browser [--url URL]
-
-EOF
+  log ""
+  log "Browser E2E (run before --generate in the same session):"
+  log "  ./scripts/browser_glb_smoke.sh [--url URL]"
+  log "  Or: ./scripts/agent_gate.sh  /  verify_hosted_space.sh --browser [--url URL]"
 fi
 
 emit_summary_json
-echo "OK: hosted verification complete"
+log "OK: hosted verification complete"
