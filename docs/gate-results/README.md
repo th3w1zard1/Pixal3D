@@ -6,7 +6,7 @@ The post-recovery agent gate can persist its JSON summary for auditing:
 ./scripts/agent_gate.sh --write-summary docs/gate-results/latest.json
 ```
 
-`latest.json` is gitignored. The gate schema is `pixal3d-agent-gate/1` (`schema_version` field). Each summary includes `checked_at` (UTC) and `git_head` (short SHA).
+`latest.json` is gitignored. The gate schema is `pixal3d-agent-gate/2` (`schema_version` field). Each summary includes `checked_at` (UTC) and `git_head` (short SHA). See `example.json` for the field shape.
 
 Parse without writing a file:
 

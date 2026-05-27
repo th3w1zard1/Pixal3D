@@ -64,7 +64,7 @@ overall_ok = parity_ok and health_ok and (
 print(
     json.dumps(
         {
-            "schema_version": "pixal3d-agent-gate/1",
+            "schema_version": "pixal3d-agent-gate/2",
             "checked_at": datetime.datetime.now(datetime.timezone.utc)
             .replace(microsecond=0)
             .isoformat()

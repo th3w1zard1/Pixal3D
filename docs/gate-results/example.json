@@ -1,0 +1,11 @@
+{
+  "schema_version": "pixal3d-agent-gate/2",
+  "checked_at": "2026-05-24T12:00:00Z",
+  "git_head": "b4f5401",
+  "url": "https://th3w1zard1-pixal3d.hf.space/",
+  "parity_ok": true,
+  "health_ok": true,
+  "browser_ran": true,
+  "browser_exit": 1,
+  "overall_ok": true
+}
